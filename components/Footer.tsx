@@ -8,7 +8,7 @@ export default function Footer() {
           Mimir<span className="text-pv-emerald">.</span>
         </span>
         <span className="font-mono tracking-wide">
-          AI-settled claim markets on Arc
+          AI-settled claim markets on Solana devnet
         </span>
       </div>
     </footer>

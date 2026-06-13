@@ -6,7 +6,7 @@
  * and a flat, newest-first activity log for the /agents page.
  */
 import { NextResponse } from "next/server";
-import { Keypair } from "@solana/web3.js";
+import { Keypair, PublicKey } from "@solana/web3.js";
 import { MimirSolanaClient } from "@/lib/solana/client";
 import { councilRoster, personaByAddress } from "@/lib/server/council-roster";
 import { isIndexEnabled, readClaims } from "@/lib/server/solana-index";
@@ -114,6 +114,22 @@ export async function GET() {
     }
     activity.reverse();
 
+    // Per-persona ER virtual balance. getBalance already swallows its own
+    // errors and returns 0n; allSettled guards against any unexpected throw so
+    // a flaky public RPC can never break the roster response.
+    const client = getReader();
+    const balances = await Promise.allSettled(
+      roster.map((p) =>
+        p.address ? client.getBalance(new PublicKey(p.address)) : Promise.resolve(0n),
+      ),
+    );
+    const balanceBySlug: Record<string, string> = {};
+    roster.forEach((p, i) => {
+      const r = balances[i];
+      balanceBySlug[p.slug] =
+        r.status === "fulfilled" ? r.value.toString() : "0";
+    });
+
     return NextResponse.json({
       success: true,
       data: {
@@ -122,6 +138,7 @@ export async function GET() {
           ...p,
           stakes: perAgent[p.slug]?.stakes ?? 0,
           volume: String(perAgent[p.slug]?.volume ?? 0),
+          balance: balanceBySlug[p.slug] ?? "0",
         })),
         activity: activity.slice(0, 60),
       },

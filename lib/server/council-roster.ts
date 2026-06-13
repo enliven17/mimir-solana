@@ -13,6 +13,7 @@ export interface RosterEntry {
   bio: string;
   archetype: string;
   address: string;
+  categoryFilter?: string[];
 }
 
 let cached: RosterEntry[] | null = null;
@@ -32,6 +33,7 @@ export function councilRoster(): RosterEntry[] {
       bio: p.bio,
       archetype: p.archetype,
       address: "",
+      categoryFilter: p.categoryFilter,
     }));
   }
   cached = COUNCIL_PERSONAS.map((p) => ({
@@ -41,6 +43,7 @@ export function councilRoster(): RosterEntry[] {
     bio: p.bio,
     archetype: p.archetype,
     address: derivePersonaKeypair(admin, p.slug).publicKey.toBase58(),
+    categoryFilter: p.categoryFilter,
   }));
   return cached;
 }
