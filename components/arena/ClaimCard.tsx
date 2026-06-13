@@ -83,11 +83,6 @@ export default function ClaimCard({ claim, locale }: ClaimCardProps) {
 
   return (
     <article className="card group relative flex h-full flex-col gap-6 overflow-hidden border-black/[0.12] bg-pv-surface p-6 transition-all duration-300 hover:border-pv-emerald/30 hover:bg-pv-surface2 sm:gap-8 sm:p-8">
-      <div
-        className="pointer-events-none absolute left-0 top-0 h-0 w-1 bg-pv-emerald transition-[height] duration-500 ease-out group-hover:h-full"
-        aria-hidden
-      />
-
       <div className="relative z-10 flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <span className={statusPillClass}>{statusLabel}</span>
