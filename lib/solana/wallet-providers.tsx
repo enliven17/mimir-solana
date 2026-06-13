@@ -1,29 +1,28 @@
 "use client";
 
 /**
- * Solana wallet context for the /arena pages.
- * Wraps only the arena route group — the rest of the app keeps its EVM
- * (wagmi) providers untouched.
+ * Solana wallet context (app-wide, from the root layout).
+ *
+ * The wallet list is intentionally empty: modern Phantom / Solflare / Backpack
+ * register themselves through the Wallet Standard, so the adapter discovers
+ * them automatically. This avoids pulling the legacy per-wallet adapter
+ * packages — in particular the Ledger adapter's `usb` native module, which
+ * needs a C/Python toolchain to build and breaks clean container installs.
  */
-import { ReactNode, useMemo } from "react";
+import { ReactNode } from "react";
 import {
   ConnectionProvider,
   WalletProvider,
 } from "@solana/wallet-adapter-react";
 import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
-import { PhantomWalletAdapter, SolflareWalletAdapter } from "@solana/wallet-adapter-wallets";
 import { SOLANA_RPC } from "./config";
 
 import "@solana/wallet-adapter-react-ui/styles.css";
 
 export function SolanaWalletProviders({ children }: { children: ReactNode }) {
-  const wallets = useMemo(
-    () => [new PhantomWalletAdapter(), new SolflareWalletAdapter()],
-    []
-  );
   return (
     <ConnectionProvider endpoint={SOLANA_RPC} config={{ commitment: "confirmed" }}>
-      <WalletProvider wallets={wallets} autoConnect>
+      <WalletProvider wallets={[]} autoConnect>
         <WalletModalProvider>{children}</WalletModalProvider>
       </WalletProvider>
     </ConnectionProvider>
