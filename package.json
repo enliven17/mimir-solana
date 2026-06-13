@@ -24,7 +24,8 @@
     "system:status": "tsx --env-file-if-exists=.env.local scripts/solana/system-status.ts",
     "system:fund": "tsx --env-file-if-exists=.env.local scripts/solana/system-status.ts --fund",
     "init:solana": "tsx --env-file-if-exists=.env.local scripts/solana/initialize.ts",
-    "indexer:solana": "tsx --env-file-if-exists=.env.local agents/indexer/solana.ts"
+    "indexer:solana": "tsx --env-file-if-exists=.env.local agents/indexer/solana.ts",
+    "start:all": "concurrently -n web,workers -c cyan,green \"next start -p $PORT\" \"npm run workers:solana\""
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.52.0",
