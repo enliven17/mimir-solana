@@ -287,3 +287,64 @@
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #F5AFAF; border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #E48B8B; }
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Wallet Adapter button — reskinned to the blush theme.
+   The library ships a purple (#512da8) pill that clashes with the app; these
+   overrides repaint it as a Mimir rose/display-font button. Keep selectors
+   specific enough to beat the vendor stylesheet without !important spam.
+   ────────────────────────────────────────────────────────────────────────── */
+.wallet-adapter-button.wallet-adapter-button-trigger,
+.wallet-adapter-button {
+  background: #D85F5F; /* pv-emerald (rose) */
+  color: #FCF8F8;      /* pv-bg */
+  height: auto;
+  padding: 0.55rem 1.1rem;
+  border-radius: 8px;
+  font-family: "Maple Mono", var(--font-display), ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  line-height: 1;
+  transition: transform 0.18s ease-out, filter 0.18s ease-out,
+    box-shadow 0.18s ease-out;
+}
+.wallet-adapter-button.wallet-adapter-button-trigger:not([disabled]):hover,
+.wallet-adapter-button:not([disabled]):hover {
+  background: #C84747; /* pv-fuch */
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px -4px rgba(216, 95, 95, 0.4);
+}
+.wallet-adapter-button:not([disabled]):active {
+  transform: translateY(0) scale(0.98);
+  box-shadow: none;
+}
+.wallet-adapter-button[disabled] {
+  background: #F9DFDF; /* pv-surface2 */
+  color: #7A5050;      /* pv-muted */
+}
+.wallet-adapter-button .wallet-adapter-button-start-icon,
+.wallet-adapter-button .wallet-adapter-button-end-icon {
+  display: none; /* drop the default wallet glyph for a cleaner pill */
+}
+
+/* Wallet selection modal — light blush surface instead of dark default. */
+.wallet-adapter-modal-wrapper {
+  background: #FBEFEF; /* pv-surface */
+  border: 1px solid #F5AFAF; /* pv-border */
+  border-radius: 16px;
+  color: #2A1818; /* pv-text */
+}
+.wallet-adapter-modal-title { color: #2A1818; }
+.wallet-adapter-modal-list .wallet-adapter-button {
+  background: #F9DFDF;
+  color: #2A1818;
+}
+.wallet-adapter-modal-list .wallet-adapter-button:hover {
+  background: #F5AFAF;
+}
+.wallet-adapter-modal-button-close {
+  background: #F9DFDF;
+}
+.wallet-adapter-modal-button-close svg { fill: #7A5050; }

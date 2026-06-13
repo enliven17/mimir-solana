@@ -1,6 +1,10 @@
 import type { Config } from "tailwindcss";
 
 const config: Config = {
+  // Opt-in dark mode only: never auto-trigger `dark:` from the OS preference.
+  // The app is a light blush theme; stray `dark:` utilities stay inert unless
+  // we explicitly add the `dark` class to <html>.
+  darkMode: "class",
   content: [
     "./components/**/*.{js,ts,jsx,tsx,mdx}",
     "./app/**/*.{js,ts,jsx,tsx,mdx}",
