@@ -79,30 +79,28 @@ export default function CouncilVotes({ challengers }: { challengers: Challenger[
         </div>
       </div>
 
-      <ul className="grid gap-1.5 sm:grid-cols-2">
+      <ul className="grid gap-1.5">
         {votes.map(({ persona: v, ch }) => (
           <li
             key={v.slug}
-            className={`flex items-center justify-between gap-2 rounded-lg border px-2.5 py-2 ${
+            className={`flex items-center gap-3 rounded-lg border px-3 py-2 ${
               ch
                 ? "border-pv-emerald/35 bg-pv-emerald/[0.06]"
                 : "border-black/[0.1] bg-black/[0.02]"
             }`}
           >
-            <div className="flex min-w-0 items-center gap-2">
-              <span className="text-base leading-none">{v.emoji}</span>
-              <div className="min-w-0">
-                <span
-                  className={`block truncate text-[12px] font-semibold ${
-                    ch ? "text-pv-text" : "text-pv-muted"
-                  }`}
-                >
-                  {v.displayName}
-                </span>
-                <span className="block font-mono text-[9px] uppercase tracking-[0.12em] text-pv-muted/70">
-                  {ARCHETYPE_LABEL[v.archetype] ?? v.archetype}
-                </span>
-              </div>
+            <span className="shrink-0 text-base leading-none">{v.emoji}</span>
+            <div className="flex min-w-0 flex-1 items-baseline gap-2">
+              <span
+                className={`truncate text-[13px] font-semibold ${
+                  ch ? "text-pv-text" : "text-pv-muted"
+                }`}
+              >
+                {v.displayName}
+              </span>
+              <span className="hidden shrink-0 font-mono text-[9px] uppercase tracking-[0.1em] text-pv-muted/60 sm:inline">
+                {ARCHETYPE_LABEL[v.archetype] ?? v.archetype}
+              </span>
             </div>
             {ch ? (
               <span className="shrink-0 font-mono text-[10px] tabular-nums text-pv-emerald">
@@ -110,7 +108,7 @@ export default function CouncilVotes({ challengers }: { challengers: Challenger[
               </span>
             ) : (
               <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.14em] text-pv-muted/60">
-                — abstain
+                abstain
               </span>
             )}
           </li>
