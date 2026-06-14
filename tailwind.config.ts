@@ -13,22 +13,22 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        // Solana purple theme, driven by CSS variables (RGB triplets) so the
+        // same `pv-*` utilities switch between light and dark via the `dark`
+        // class on <html>. The legacy accent names (cyan/fuch/emerald) all
+        // resolve to the Solana purple family; `gold` is the Solana green.
         pv: {
-          // Soft blush palette
-          bg:       "#FCF8F8",
-          surface:  "#FBEFEF",
-          surface2: "#F9DFDF",
-          border:   "#F5AFAF",
-          text:     "#2A1818",
-          muted:    "#7A5050",
-          // Accents — monochromatic rose family (no green/cyan/fuch).
-          // The legacy token names (cyan/fuch/emerald) stay so existing
-          // utility classes keep working; they all resolve to rose tones now.
-          cyan:     "#D85F5F",
-          fuch:     "#C84747",
-          emerald:  "#D85F5F",
-          gold:     "#B07300",
-          danger:   "#B91C1C",
+          bg:       "rgb(var(--pv-bg) / <alpha-value>)",
+          surface:  "rgb(var(--pv-surface) / <alpha-value>)",
+          surface2: "rgb(var(--pv-surface2) / <alpha-value>)",
+          border:   "rgb(var(--pv-border) / <alpha-value>)",
+          text:     "rgb(var(--pv-text) / <alpha-value>)",
+          muted:    "rgb(var(--pv-muted) / <alpha-value>)",
+          cyan:     "rgb(var(--pv-accent) / <alpha-value>)",
+          fuch:     "rgb(var(--pv-accent2) / <alpha-value>)",
+          emerald:  "rgb(var(--pv-accent) / <alpha-value>)",
+          gold:     "rgb(var(--pv-gold) / <alpha-value>)",
+          danger:   "rgb(var(--pv-danger) / <alpha-value>)",
         },
       },
       fontFamily: {

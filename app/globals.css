@@ -7,6 +7,38 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ──────────────────────────────────────────────────────────────────────────
+   Solana purple theme tokens (RGB triplets consumed by tailwind `pv-*`).
+   :root = light, .dark = dark. Brand purple #9945FF, brand green #14F195.
+   ────────────────────────────────────────────────────────────────────────── */
+:root {
+  --pv-bg:       250 247 255;  /* #FAF7FF */
+  --pv-surface:  243 237 255;  /* #F3EDFF */
+  --pv-surface2: 231 219 255;  /* #E7DBFF */
+  --pv-border:   201 179 255;  /* #C9B3FF */
+  --pv-text:     26 17 38;     /* #1A1126 */
+  --pv-muted:    107 91 138;   /* #6B5B8A */
+  --pv-accent:   153 69 255;   /* #9945FF — Solana purple */
+  --pv-accent2:  124 58 237;   /* #7C3AED */
+  --pv-gold:     16 185 129;   /* #10B981 — green, readable on light */
+  --pv-danger:   220 38 38;    /* #DC2626 */
+  color-scheme: light;
+}
+
+.dark {
+  --pv-bg:       13 11 20;     /* #0D0B14 */
+  --pv-surface:  23 18 33;     /* #171221 */
+  --pv-surface2: 33 26 48;     /* #211A30 */
+  --pv-border:   58 47 82;     /* #3A2F52 */
+  --pv-text:     245 241 255;  /* #F5F1FF */
+  --pv-muted:    155 139 184;  /* #9B8BB8 */
+  --pv-accent:   169 112 255;  /* #A970FF — brighter purple for dark */
+  --pv-accent2:  153 69 255;   /* #9945FF */
+  --pv-gold:     20 241 149;   /* #14F195 — Solana green */
+  --pv-danger:   255 97 102;   /* #FF6166 */
+  color-scheme: dark;
+}
+
 @layer base {
   /**
    * Evita scroll horizontal en mobile (elementos 100vw, márgenes negativos, etc.).
@@ -14,7 +46,6 @@
    */
   html {
     @apply antialiased overflow-x-hidden;
-    color-scheme: light;
   }
 
   body {
@@ -48,13 +79,13 @@
     background: radial-gradient(
       ellipse at 50% 50%,
       transparent 60%,
-      rgba(245, 175, 175, 0.28) 100%
+      rgb(var(--pv-accent) / 0.18) 100%
     );
   }
 
   ::selection {
-    background: rgba(245, 175, 175, 0.45);
-    color: #2A1818;
+    background: rgb(var(--pv-accent) / 0.35);
+    color: rgb(var(--pv-text));
   }
 
   /**
@@ -285,19 +316,18 @@
 /* ── Scrollbar ── */
 ::-webkit-scrollbar { width: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #F5AFAF; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #E48B8B; }
+::-webkit-scrollbar-thumb { background: rgb(var(--pv-accent) / 0.55); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgb(var(--pv-accent)); }
 
 /* ──────────────────────────────────────────────────────────────────────────
-   Wallet Adapter button — reskinned to the blush theme.
-   The library ships a purple (#512da8) pill that clashes with the app; these
-   overrides repaint it as a Mimir rose/display-font button. Keep selectors
+   Wallet Adapter button — reskinned to the Solana purple theme via the same
+   pv-* CSS variables, so it tracks light/dark automatically. Selectors stay
    specific enough to beat the vendor stylesheet without !important spam.
    ────────────────────────────────────────────────────────────────────────── */
 .wallet-adapter-button.wallet-adapter-button-trigger,
 .wallet-adapter-button {
-  background: #D85F5F; /* pv-emerald (rose) */
-  color: #FCF8F8;      /* pv-bg */
+  background: rgb(var(--pv-accent));
+  color: #ffffff;
   height: auto;
   padding: 0.55rem 1.1rem;
   border-radius: 8px;
@@ -312,39 +342,39 @@
 }
 .wallet-adapter-button.wallet-adapter-button-trigger:not([disabled]):hover,
 .wallet-adapter-button:not([disabled]):hover {
-  background: #C84747; /* pv-fuch */
+  background: rgb(var(--pv-accent2));
   transform: translateY(-1px);
-  box-shadow: 0 6px 18px -4px rgba(216, 95, 95, 0.4);
+  box-shadow: 0 6px 18px -4px rgb(var(--pv-accent) / 0.45);
 }
 .wallet-adapter-button:not([disabled]):active {
   transform: translateY(0) scale(0.98);
   box-shadow: none;
 }
 .wallet-adapter-button[disabled] {
-  background: #F9DFDF; /* pv-surface2 */
-  color: #7A5050;      /* pv-muted */
+  background: rgb(var(--pv-surface2));
+  color: rgb(var(--pv-muted));
 }
 .wallet-adapter-button .wallet-adapter-button-start-icon,
 .wallet-adapter-button .wallet-adapter-button-end-icon {
   display: none; /* drop the default wallet glyph for a cleaner pill */
 }
 
-/* Wallet selection modal — light blush surface instead of dark default. */
+/* Wallet selection modal — themed surface for light/dark. */
 .wallet-adapter-modal-wrapper {
-  background: #FBEFEF; /* pv-surface */
-  border: 1px solid #F5AFAF; /* pv-border */
+  background: rgb(var(--pv-surface));
+  border: 1px solid rgb(var(--pv-border));
   border-radius: 16px;
-  color: #2A1818; /* pv-text */
+  color: rgb(var(--pv-text));
 }
-.wallet-adapter-modal-title { color: #2A1818; }
+.wallet-adapter-modal-title { color: rgb(var(--pv-text)); }
 .wallet-adapter-modal-list .wallet-adapter-button {
-  background: #F9DFDF;
-  color: #2A1818;
+  background: rgb(var(--pv-surface2));
+  color: rgb(var(--pv-text));
 }
 .wallet-adapter-modal-list .wallet-adapter-button:hover {
-  background: #F5AFAF;
+  background: rgb(var(--pv-accent) / 0.25);
 }
 .wallet-adapter-modal-button-close {
-  background: #F9DFDF;
+  background: rgb(var(--pv-surface2));
 }
-.wallet-adapter-modal-button-close svg { fill: #7A5050; }
+.wallet-adapter-modal-button-close svg { fill: rgb(var(--pv-muted)); }

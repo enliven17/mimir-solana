@@ -13,6 +13,14 @@ export default function RootLayout({
     <html
       className={`${fontDisplay.variable} ${fontBody.variable} ${fontMono.variable}`}
     >
+      <head>
+        {/* Set the theme before paint to avoid a flash of the wrong palette. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{if(localStorage.getItem('mimir-theme')==='dark')document.documentElement.classList.add('dark');}catch(e){}})();`,
+          }}
+        />
+      </head>
       <body className="overflow-x-hidden">
         <NextTopLoader
           color="#22D3EE"

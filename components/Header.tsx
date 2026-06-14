@@ -9,6 +9,7 @@ import { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { Link, usePathname } from "@/i18n/navigation";
 import { Menu, X } from "lucide-react";
+import ThemeToggle from "./ThemeToggle";
 
 // wallet-adapter button is client-only (touches window) — load without SSR.
 const WalletMultiButton = dynamic(
@@ -72,17 +73,21 @@ export default function Header() {
               </Link>
             );
           })}
+          <ThemeToggle />
           <WalletMultiButton />
         </div>
 
-        {/* Mobile toggle */}
-        <button
-          className="md:hidden text-pv-text"
-          onClick={() => setMobileOpen((v) => !v)}
-          aria-label="Toggle menu"
-        >
-          {mobileOpen ? <X size={20} /> : <Menu size={20} />}
-        </button>
+        {/* Mobile controls */}
+        <div className="flex items-center gap-2 md:hidden">
+          <ThemeToggle />
+          <button
+            className="text-pv-text"
+            onClick={() => setMobileOpen((v) => !v)}
+            aria-label="Toggle menu"
+          >
+            {mobileOpen ? <X size={20} /> : <Menu size={20} />}
+          </button>
+        </div>
       </nav>
 
       {mobileOpen && (
