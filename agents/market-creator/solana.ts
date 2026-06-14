@@ -19,6 +19,7 @@
  *      CREATOR_STAKE_USDC     (default 3)
  *      CREATOR_HORIZON_MIN    (claim deadline horizon in minutes, default 30)
  */
+import { getAccount } from "@solana/spl-token";
 import { loadCreatorKeypair } from "../../lib/solana/keypair";
 import { MimirSolanaClient } from "../../lib/solana/client";
 import { toUsdcUnits } from "../../lib/solana/config";
@@ -97,6 +98,26 @@ async function runCycle(client: MimirSolanaClient): Promise<void> {
     console.log("[creator] No drafts this cycle.");
     return;
   }
+
+  // Guard: the creator stakes USDC on every claim and usually loses it to the
+  // challengers, so its token account drains over time. Skip the cycle (rather
+  // than spamming failed transactions) when it can't cover the drafts.
+  const needed = STAKE_USDC * drafts.length;
+  let usdcBal = 0;
+  try {
+    const acc = await getAccount(client.baseConnection, client.usdcAta());
+    usdcBal = Number(acc.amount) / 1e6;
+  } catch {
+    usdcBal = 0;
+  }
+  if (usdcBal < needed) {
+    console.log(
+      `[creator] insufficient USDC (${usdcBal.toFixed(2)} < ${needed} needed) — ` +
+        `top up ${client.publicKey.toBase58()} (faucet.circle.com or admin transfer). Skipping cycle.`
+    );
+    return;
+  }
+
   for (const d of drafts) console.log(`[draft] ${d.category}: ${d.label}`);
 
   const deadline = Math.floor(Date.now() / 1000) + HORIZON_MIN * 60;
