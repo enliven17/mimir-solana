@@ -26,13 +26,13 @@
 }
 
 .dark {
-  --pv-bg:       13 11 20;     /* #0D0B14 */
-  --pv-surface:  23 18 33;     /* #171221 */
-  --pv-surface2: 33 26 48;     /* #211A30 */
-  --pv-border:   58 47 82;     /* #3A2F52 */
-  --pv-text:     245 241 255;  /* #F5F1FF */
-  --pv-muted:    155 139 184;  /* #9B8BB8 */
-  --pv-accent:   169 112 255;  /* #A970FF — brighter purple for dark */
+  --pv-bg:       7 7 9;        /* #070709 — near-black */
+  --pv-surface:  17 17 21;     /* #111115 */
+  --pv-surface2: 27 27 33;     /* #1B1B21 */
+  --pv-border:   48 48 56;     /* #303038 */
+  --pv-text:     244 244 248;  /* #F4F4F8 */
+  --pv-muted:    150 150 162;  /* #9696A2 */
+  --pv-accent:   169 112 255;  /* #A970FF — purple accent (text/borders/buttons) */
   --pv-accent2:  153 69 255;   /* #9945FF */
   --pv-gold:     20 241 149;   /* #14F195 — Solana green */
   --pv-danger:   255 97 102;   /* #FF6166 */
