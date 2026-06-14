@@ -22,7 +22,7 @@
 import { getAccount } from "@solana/spl-token";
 import { loadCreatorKeypair } from "../../lib/solana/keypair";
 import { MimirSolanaClient } from "../../lib/solana/client";
-import { toUsdcUnits } from "../../lib/solana/config";
+import { toUsdcUnits, ST_OPEN } from "../../lib/solana/config";
 import {
   FLASH_CLAIM_SYMBOLS,
   flashResolutionUrl,
@@ -85,8 +85,42 @@ async function draftCryptoClaims(count: number): Promise<DraftClaim[]> {
   return out;
 }
 
+/**
+ * Cancel the creator's own claims that expired without ever drawing a
+ * challenger. They can't be resolved (no winning side), so they'd otherwise
+ * sit dead in the arena with the creator's stake locked. Cancelling refunds
+ * the stake — undelegate first since the claim PDA lives in the ER.
+ */
+async function cancelExpiredEmpty(client: MimirSolanaClient): Promise<void> {
+  const cfg = await client.getConfig();
+  if (!cfg) return;
+  const now = Math.floor(Date.now() / 1000);
+  for (let id = 1n; id <= cfg.claimCount; id++) {
+    const c = await client.getClaim(id);
+    if (!c) continue;
+    if (c.state !== ST_OPEN || c.deadline > now || c.challengers.length > 0) continue;
+    if (!c.creator.equals(client.publicKey)) continue;
+    try {
+      if (await client.isDelegated(id)) {
+        await client.undelegateClaim(id);
+        for (let i = 0; i < 20; i++) {
+          await new Promise((r) => setTimeout(r, 1500));
+          if (!(await client.isDelegated(id))) break;
+        }
+      }
+      await client.cancelClaim(id);
+      console.log(`[creator] cancelled expired empty claim #${id} — stake refunded`);
+    } catch (err: any) {
+      console.warn(`[creator] cancel #${id} failed:`, err?.message ?? err);
+    }
+  }
+}
+
 async function runCycle(client: MimirSolanaClient): Promise<void> {
   console.log(`\n[creator] ── Cycle at ${new Date().toISOString()}`);
+
+  // Clean up dead expired claims first (frees the arena + refunds stake).
+  await cancelExpiredEmpty(client);
 
   const [crypto, worldCup] = await Promise.all([
     draftCryptoClaims(CRYPTO_PER_RUN),
