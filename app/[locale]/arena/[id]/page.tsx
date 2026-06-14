@@ -756,6 +756,11 @@ export default function ArenaClaimPage() {
                 </div>
               )}
             </div>
+
+            {/* Council verdict — full-width in the main column */}
+            <div className="mt-6 sm:mt-8">
+              <CouncilVotes claimId={claim.id} />
+            </div>
           </div>
 
           {/* ── Sticky sidebar ── */}
@@ -795,9 +800,6 @@ export default function ArenaClaimPage() {
                   </div>
                 </div>
               )}
-
-              {/* Council verdict — which AI personas staked this claim */}
-              <CouncilVotes challengers={claim.challengers} />
 
               {/* Challengers list */}
               <div className="card border-black/[0.12] bg-pv-surface">

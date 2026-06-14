@@ -1,114 +1,134 @@
 "use client";
 
 /**
- * Council verdict panel for the arena claim-detail page. Shows where each AI
- * council persona stands on this claim: ✓ if its wallet staked the challenger
- * side, — abstain otherwise. Persona wallets come from /api/arena/agents; the
- * stake match is done against the claim's on-chain challenger list.
+ * CouncilVotes — arena claim-detail panel showing where each of the AI council
+ * personas stands on a single claim. A 1:1 port of the original Mimir
+ * CouncilVoteWidget: reads /api/arena/[id]/council and renders a grid of
+ * persona pills with ✓ + stake (challenger side) or — abstain.
  */
 import { useEffect, useState } from "react";
 
-interface RosterPersona {
+interface PersonaVote {
   slug: string;
   displayName: string;
   emoji: string;
   archetype: string;
   address: string;
+  staked: boolean;
+  stakeUsdc: number;
 }
 
-interface Challenger {
-  addr: string;
-  stake: string;
-  paid: boolean;
+interface CouncilResponse {
+  claimId: number;
+  total: number;
+  stakedCount: number;
+  totalUsdc: number;
+  votes: PersonaVote[];
 }
 
-const ARCHETYPE_LABEL: Record<string, string> = {
-  "llm-biased": "LLM · biased",
-  "rule-based": "Rule · no LLM",
-  specialist: "Specialist",
-  micro: "Micro · low threshold",
-};
-
-function usdc(units: string | number): string {
-  return (Number(units) / 1e6).toLocaleString("en-US", { maximumFractionDigits: 2 });
+function explorerAddr(addr: string): string {
+  return `https://explorer.solana.com/address/${addr}?cluster=devnet`;
 }
 
-export default function CouncilVotes({ challengers }: { challengers: Challenger[] }) {
-  const [roster, setRoster] = useState<RosterPersona[] | null>(null);
+export default function CouncilVotes({ claimId }: { claimId: number }) {
+  const [data, setData] = useState<CouncilResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    let alive = true;
-    fetch("/api/arena/agents")
-      .then((r) => r.json())
-      .then((j) => {
-        if (alive && j.success) setRoster(j.data.personas as RosterPersona[]);
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    fetch(`/api/arena/${claimId}/council`)
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json() as Promise<CouncilResponse>;
       })
-      .catch(() => {
-        /* fail-quiet: the detail page still works without this panel */
+      .then((body) => {
+        if (cancelled) return;
+        setData(body);
+      })
+      .catch((err: Error) => {
+        if (cancelled) return;
+        setError(err.message);
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setLoading(false);
       });
     return () => {
-      alive = false;
+      cancelled = true;
     };
-  }, []);
+  }, [claimId]);
 
-  if (!roster || roster.length === 0) return null;
+  if (loading) {
+    return (
+      <section className="rounded-2xl border border-pv-border/30 bg-pv-surface/70 p-5">
+        <div className="text-[11px] font-mono uppercase tracking-[0.18em] text-pv-muted">
+          Council verdict
+        </div>
+        <div className="mt-2 text-sm text-pv-muted">Reading on-chain stakes…</div>
+      </section>
+    );
+  }
 
-  const stakeByAddr = new Map(challengers.map((c) => [c.addr, c]));
-  const votes = roster
-    .map((p) => ({ persona: p, ch: p.address ? stakeByAddr.get(p.address) : undefined }))
-    // staked personas first, then abstainers — both alphabetical-ish by roster order
-    .sort((a, b) => (a.ch ? 0 : 1) - (b.ch ? 0 : 1));
-
-  const stakedCount = votes.filter((v) => v.ch).length;
-  const totalUsdc = votes.reduce((s, v) => s + (v.ch ? Number(v.ch.stake) : 0), 0);
+  if (error || !data) return null; // fail-quiet — the page still works without it
+  if (data.total === 0) return null; // no council in this deploy
 
   return (
-    <section className="card border-black/[0.12] bg-pv-surface p-5 sm:p-6">
-      <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+    <section className="rounded-2xl border border-pv-border/30 bg-pv-surface/70 p-5">
+      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
         <div>
-          <div className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-pv-emerald">
+          <div className="text-[11px] font-mono uppercase tracking-[0.18em] text-pv-emerald">
             Council verdict
           </div>
-          <p className="mt-1 text-[12px] leading-relaxed text-pv-muted">
-            Where each of the {roster.length} AI personas stands. ✓ means they staked the
-            challenger side in the Ephemeral Rollup.
+          <p className="mt-0.5 text-[12px] text-pv-muted">
+            Where each of the {data.total} AI personas stands on this claim. ✓ means they
+            staked the challenger side.
           </p>
         </div>
         <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-pv-muted">
-          {stakedCount}/{roster.length} staked · {usdc(totalUsdc)} USDC
+          {data.stakedCount} of {data.total} staked · {data.totalUsdc.toFixed(2)} USDC
         </div>
       </div>
 
-      <ul className="grid gap-1.5">
-        {votes.map(({ persona: v, ch }) => (
+      <ul className="grid gap-1.5 sm:grid-cols-2">
+        {data.votes.map((v) => (
           <li
             key={v.slug}
-            className={`flex items-center gap-3 rounded-lg border px-3 py-2 ${
-              ch
-                ? "border-pv-emerald/35 bg-pv-emerald/[0.06]"
-                : "border-black/[0.1] bg-black/[0.02]"
+            className={`flex items-center justify-between gap-2 rounded-lg border px-2.5 py-1.5 ${
+              v.staked
+                ? "border-pv-emerald/35 bg-pv-emerald/[0.05]"
+                : "border-pv-border/30 bg-pv-surface2/20"
             }`}
           >
-            <span className="shrink-0 text-base leading-none">{v.emoji}</span>
-            <div className="flex min-w-0 flex-1 items-baseline gap-2">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="text-base leading-none grayscale opacity-75">{v.emoji}</span>
               <span
-                className={`truncate text-[13px] font-semibold ${
-                  ch ? "text-pv-text" : "text-pv-muted"
+                className={`truncate text-[12px] font-semibold ${
+                  v.staked ? "text-pv-text" : "text-pv-muted"
                 }`}
               >
                 {v.displayName}
               </span>
-              <span className="hidden shrink-0 font-mono text-[9px] uppercase tracking-[0.1em] text-pv-muted/60 sm:inline">
-                {ARCHETYPE_LABEL[v.archetype] ?? v.archetype}
-              </span>
             </div>
-            {ch ? (
-              <span className="shrink-0 font-mono text-[10px] tabular-nums text-pv-emerald">
-                ✓ {usdc(ch.stake)} USDC
-              </span>
+            {v.staked ? (
+              <div className="flex shrink-0 items-center gap-1.5">
+                <span className="font-mono text-[10px] tabular-nums text-pv-emerald">
+                  ✓ {v.stakeUsdc.toFixed(2)} USDC
+                </span>
+                <a
+                  href={explorerAddr(v.address)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-mono text-[10px] text-pv-muted hover:text-pv-emerald"
+                >
+                  ↗
+                </a>
+              </div>
             ) : (
-              <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.14em] text-pv-muted/60">
-                abstain
+              <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-pv-muted">
+                — abstain
               </span>
             )}
           </li>
