@@ -1,33 +1,37 @@
 /**
- * Mimir Market-Creator Agent — Solana × Flash Trade edition
+ * Mimir Market-Creator Agent — Solana edition
  *
- * Every cycle it reads live Flash Trade oracle prices (BTC/ETH/SOL), drafts
- * short-horizon price claims around the spot price, creates the best ones
- * on-chain with its own USDC stake, and immediately delegates each claim to
- * the MagicBlock Ephemeral Rollup so challenges are real-time and fee-less.
+ * Every cycle it drafts two kinds of short-horizon claims, stakes USDC on each,
+ * creates them on-chain and delegates each to the MagicBlock Ephemeral Rollup
+ * so challenges are real-time and fee-less:
  *
- * Resolution source IS Flash Trade: the claim's resolutionUrl points at
- * https://flashapi.trade/prices/<SYMBOL>, which the oracle agent fetches as
- * settlement evidence.
+ *   1. CRYPTO  — price claims around the live Flash Trade spot (BTC/ETH/SOL).
+ *                Resolution evidence: https://flashapi.trade/prices/<SYMBOL>.
+ *   2. WORLD CUP — 2026 tournament markets (match results, goal totals, star
+ *                  players to score). Resolution evidence: a web search the
+ *                  oracle scrapes after the deadline.
  *
  * Run: npx tsx --env-file-if-exists=.env.local agents/market-creator/solana.ts
- * Env: SOLANA_KEYPAIR, SOLANA_USDC_MINT, NEXT_PUBLIC_MIMIR_PROGRAM_ID
- *      CREATOR_INTERVAL_MS   (default 3_600_000 = 1h)
- *      CREATOR_MAX_PER_RUN   (default 3)
- *      CREATOR_STAKE_USDC    (default 3)
- *      CREATOR_HORIZON_MIN   (claim deadline horizon in minutes, default 30)
+ * Env: SOLANA_KEYPAIR / CREATOR_KEYPAIR_JSON, SOLANA_USDC_MINT, program id
+ *      CREATOR_INTERVAL_MS    (default 3_600_000 = 1h)
+ *      CREATOR_CRYPTO_PER_RUN (default 2)
+ *      CREATOR_WORLDCUP_PER_RUN (default 3)
+ *      CREATOR_STAKE_USDC     (default 3)
+ *      CREATOR_HORIZON_MIN    (claim deadline horizon in minutes, default 30)
  */
 import { loadCreatorKeypair } from "../../lib/solana/keypair";
 import { MimirSolanaClient } from "../../lib/solana/client";
-import { toUsdcUnits, fromUsdcUnits } from "../../lib/solana/config";
+import { toUsdcUnits } from "../../lib/solana/config";
 import {
   FLASH_CLAIM_SYMBOLS,
   flashResolutionUrl,
   getFlashPrice,
 } from "../../lib/solana/flashtrade";
+import { draftWorldCupClaims } from "../../lib/solana/worldcup";
 
 const INTERVAL_MS = Number(process.env.CREATOR_INTERVAL_MS ?? "3600000");
-const MAX_PER_RUN = Number(process.env.CREATOR_MAX_PER_RUN ?? "3");
+const CRYPTO_PER_RUN = Number(process.env.CREATOR_CRYPTO_PER_RUN ?? "2");
+const WORLDCUP_PER_RUN = Number(process.env.CREATOR_WORLDCUP_PER_RUN ?? "3");
 const STAKE_USDC = Number(process.env.CREATOR_STAKE_USDC ?? "3");
 const HORIZON_MIN = Number(process.env.CREATOR_HORIZON_MIN ?? "30");
 
@@ -37,45 +41,14 @@ const SYMBOL_NAMES: Record<string, string> = {
   SOL: "Solana",
 };
 
-interface Draft {
-  symbol: string;
+/** A chain-ready claim draft, regardless of theme. */
+interface DraftClaim {
   question: string;
   creatorPosition: string;
   counterPosition: string;
-  threshold: number;
-  direction: "above" | "below";
-}
-
-/**
- * Draft one claim per symbol: "will <SYM> trade above/below <spot ± 0.3%>
- * at the deadline per Flash Trade oracle?". Tight thresholds keep markets
- * genuinely uncertain, which is what makes them challenge-ready.
- */
-async function draftClaims(): Promise<Draft[]> {
-  const out: Draft[] = [];
-  for (const symbol of FLASH_CLAIM_SYMBOLS) {
-    try {
-      const px = await getFlashPrice(symbol);
-      const direction = Math.random() < 0.5 ? "above" : "below";
-      const skew = direction === "above" ? 1.003 : 0.997;
-      const threshold = round2(px.priceUi * skew);
-      const name = SYMBOL_NAMES[symbol] ?? symbol;
-      out.push({
-        symbol,
-        direction,
-        threshold,
-        question: `Will ${name} (${symbol}) trade ${direction} $${fmt(threshold)} at the deadline, per the Flash Trade oracle price?`,
-        creatorPosition: `Yes — ${symbol} will be ${direction} $${fmt(threshold)}`,
-        counterPosition: `No — ${symbol} will not be ${direction} $${fmt(threshold)}`,
-      });
-      console.log(
-        `[draft] ${symbol} spot $${fmt(px.priceUi)} → claim: ${direction} $${fmt(threshold)}`
-      );
-    } catch (err: any) {
-      console.warn(`[draft] ${symbol} price fetch failed:`, err?.message ?? err);
-    }
-  }
-  return out;
+  category: string;
+  resolutionUrl: string;
+  label: string;
 }
 
 function round2(n: number): number {
@@ -85,13 +58,46 @@ function fmt(n: number): string {
   return n.toLocaleString("en-US", { maximumFractionDigits: 2 });
 }
 
+/** Crypto price claims around the live Flash Trade spot, ±0.3%. */
+async function draftCryptoClaims(count: number): Promise<DraftClaim[]> {
+  const out: DraftClaim[] = [];
+  for (const symbol of FLASH_CLAIM_SYMBOLS) {
+    if (out.length >= count) break;
+    try {
+      const px = await getFlashPrice(symbol);
+      const direction = Math.random() < 0.5 ? "above" : "below";
+      const skew = direction === "above" ? 1.003 : 0.997;
+      const threshold = round2(px.priceUi * skew);
+      const name = SYMBOL_NAMES[symbol] ?? symbol;
+      out.push({
+        label: `${symbol} ${direction} $${fmt(threshold)}`,
+        category: "crypto",
+        question: `Will ${name} (${symbol}) trade ${direction} $${fmt(threshold)} at the deadline, per the Flash Trade oracle price?`,
+        creatorPosition: `Yes — ${symbol} will be ${direction} $${fmt(threshold)}`,
+        counterPosition: `No — ${symbol} will not be ${direction} $${fmt(threshold)}`,
+        resolutionUrl: flashResolutionUrl(symbol),
+      });
+    } catch (err: any) {
+      console.warn(`[draft] ${symbol} price fetch failed:`, err?.message ?? err);
+    }
+  }
+  return out;
+}
+
 async function runCycle(client: MimirSolanaClient): Promise<void> {
   console.log(`\n[creator] ── Cycle at ${new Date().toISOString()}`);
-  const drafts = (await draftClaims()).slice(0, MAX_PER_RUN);
+
+  const [crypto, worldCup] = await Promise.all([
+    draftCryptoClaims(CRYPTO_PER_RUN),
+    Promise.resolve(draftWorldCupClaims(WORLDCUP_PER_RUN)),
+  ]);
+  const drafts: DraftClaim[] = [...worldCup, ...crypto];
+
   if (!drafts.length) {
     console.log("[creator] No drafts this cycle.");
     return;
   }
+  for (const d of drafts) console.log(`[draft] ${d.category}: ${d.label}`);
 
   const deadline = Math.floor(Date.now() / 1000) + HORIZON_MIN * 60;
   for (const d of drafts) {
@@ -100,14 +106,14 @@ async function runCycle(client: MimirSolanaClient): Promise<void> {
         question: d.question,
         creatorPosition: d.creatorPosition,
         counterPosition: d.counterPosition,
-        resolutionUrl: flashResolutionUrl(d.symbol),
-        category: "crypto",
+        resolutionUrl: d.resolutionUrl,
+        category: d.category,
         stakeAmount: toUsdcUnits(STAKE_USDC),
         deadline,
         maxChallengers: 16,
       });
       console.log(
-        `[creator] ✓ Claim #${claimId} (${d.symbol} ${d.direction} $${fmt(d.threshold)}) — ` +
+        `[creator] ✓ Claim #${claimId} [${d.category}] ${d.label} — ` +
           `https://explorer.solana.com/tx/${txSig}?cluster=devnet`
       );
       // Hand the market to the Ephemeral Rollup right away: from here on,
@@ -115,7 +121,7 @@ async function runCycle(client: MimirSolanaClient): Promise<void> {
       const delSig = await client.delegateClaim(claimId);
       console.log(`[creator]   → delegated to MagicBlock ER (${delSig.slice(0, 16)}…)`);
     } catch (err: any) {
-      console.error(`[creator] Failed to create ${d.symbol} claim:`, err?.message ?? err);
+      console.error(`[creator] Failed to create claim (${d.label}):`, err?.message ?? err);
     }
   }
 }
@@ -126,11 +132,13 @@ async function main(): Promise<void> {
   const cfg = await client.getConfig();
 
   console.log("═══════════════════════════════════════════════");
-  console.log("  Mimir Market-Creator — Solana × Flash Trade");
+  console.log("  Mimir Market-Creator — crypto + World Cup 2026");
   console.log(`  Program  : ${client.base.programId.toBase58()}`);
   console.log(`  Creator  : ${client.publicKey.toBase58()}`);
   console.log(`  Claims   : ${cfg?.claimCount ?? "config missing!"}`);
-  console.log(`  Cadence  : every ${INTERVAL_MS / 60000} min, max ${MAX_PER_RUN}/run`);
+  console.log(
+    `  Cadence  : every ${INTERVAL_MS / 60000} min · ${CRYPTO_PER_RUN} crypto + ${WORLDCUP_PER_RUN} World Cup/run`
+  );
   console.log(`  Stake    : ${STAKE_USDC} USDC · horizon ${HORIZON_MIN} min`);
   console.log("═══════════════════════════════════════════════\n");
 

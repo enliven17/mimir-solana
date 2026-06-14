@@ -81,15 +81,19 @@ export async function GET() {
       confidence?: number;
     };
     const activity: Activity[] = [];
+    // stakes = lifetime number of challenges; atRisk = stake on still-open
+    // claims only (resolved/cancelled claims have already paid out, so their
+    // stake is no longer at risk).
     const perAgent: Record<string, { stakes: number; volume: number }> = {};
 
     for (const c of claims) {
+      const isOpen = c.state === 0 || c.state === 1;
       for (const ch of c.challengers ?? []) {
         const persona = byAddr[ch.addr];
         const key = persona?.slug ?? (ch.addr === oracleAddress ? "oracle" : "human");
         perAgent[key] = perAgent[key] ?? { stakes: 0, volume: 0 };
         perAgent[key].stakes += 1;
-        perAgent[key].volume += Number(ch.stake);
+        if (isOpen) perAgent[key].volume += Number(ch.stake);
         activity.push({
           kind: "challenge",
           claimId: c.id,
