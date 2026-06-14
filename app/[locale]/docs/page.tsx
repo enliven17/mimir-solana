@@ -15,13 +15,13 @@ import { Link } from "@/i18n/navigation";
  * ───────────────────────────────────────────────────────────────────────── */
 
 const C = {
-  bg: "#FCF8F8",
-  surface: "#FBEFEF",
-  surf2: "#F9DFDF",
-  border: "#F5AFAF",
-  text: "#2A1818",
-  muted: "#7A5050",
-  accent: "#D85F5F",
+  bg: "#FAF7FF",
+  surface: "#F3EDFF",
+  surf2: "#E7DBFF",
+  border: "#C9B3FF",
+  text: "#1A1126",
+  muted: "#6B5B8A",
+  accent: "#9945FF",
 };
 
 /* ── 1. Architecture diagram ─────────────────────────────────────────────── */

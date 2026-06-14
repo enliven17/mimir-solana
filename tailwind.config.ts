@@ -48,13 +48,13 @@ const config: Config = {
         full:  "9999px",
       },
       boxShadow: {
-        glow:           "0 0 40px rgba(245,175,175,0.32)",
-        "glow-fuch":    "0 0 40px rgba(245,175,175,0.28)",
-        "glow-emerald": "0 0 40px rgba(216, 95, 95,0.18)",
+        glow:           "0 0 40px rgba(153,69,255,0.32)",
+        "glow-fuch":    "0 0 40px rgba(153,69,255,0.28)",
+        "glow-emerald": "0 0 40px rgba(153, 69, 255,0.18)",
         "glow-gold":    "0 0 40px rgba(176,115,0,0.12)",
-        "glow-lg":      "0 0 60px rgba(245,175,175,0.36)",
-        "glow-fuch-lg": "0 0 60px rgba(245,175,175,0.32)",
-        "glow-emerald-lg": "0 0 60px rgba(216, 95, 95,0.22)",
+        "glow-lg":      "0 0 60px rgba(153,69,255,0.36)",
+        "glow-fuch-lg": "0 0 60px rgba(153,69,255,0.32)",
+        "glow-emerald-lg": "0 0 60px rgba(153, 69, 255,0.22)",
       },
       keyframes: {
         fadeUp: {
@@ -75,8 +75,8 @@ const config: Config = {
           "100%": { opacity: "0", transform: "translateY(100vh) rotate(600deg)" },
         },
         pulseGlow: {
-          "0%, 100%": { boxShadow: "0 0 20px rgba(78,222,163,0.06)" },
-          "50%":      { boxShadow: "0 0 50px rgba(78,222,163,0.18)" },
+          "0%, 100%": { boxShadow: "0 0 20px rgba(20,241,149,0.06)" },
+          "50%":      { boxShadow: "0 0 50px rgba(20,241,149,0.18)" },
         },
         blink: {
           "0%, 100%": { opacity: "1" },

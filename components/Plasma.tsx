@@ -86,10 +86,11 @@ vec3 sanitize(vec3 c){
 
 // 4-stop blush palette (matches the page's pv tokens).
 // Index 0 = page bg (lightest), index 3 = accent (deepest tint).
-const vec3 PAL0 = vec3(0.988, 0.973, 0.973); // #FCF8F8
-const vec3 PAL1 = vec3(0.984, 0.937, 0.937); // #FBEFEF
-const vec3 PAL2 = vec3(0.976, 0.875, 0.875); // #F9DFDF
-const vec3 PAL3 = vec3(0.961, 0.686, 0.686); // #F5AFAF
+// Solana purple gradient.
+const vec3 PAL0 = vec3(0.980, 0.969, 1.000); // #FAF7FF
+const vec3 PAL1 = vec3(0.937, 0.902, 1.000); // #EFE6FF
+const vec3 PAL2 = vec3(0.863, 0.788, 1.000); // #DCC9FF
+const vec3 PAL3 = vec3(0.600, 0.271, 1.000); // #9945FF — Solana purple
 
 vec3 palette(float t) {
   t = clamp(t, 0.0, 1.0);

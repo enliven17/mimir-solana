@@ -433,7 +433,7 @@ export default function ArenaPage() {
                     aria-pressed={activeView === view}
                     className={`flex min-h-[52px] flex-1 items-center justify-between gap-3 rounded-[18px] px-4 py-3 text-left transition-all duration-200 sm:min-w-[200px] ${
                       activeView === view
-                        ? "border border-pv-emerald/40 bg-pv-emerald/[0.18] shadow-[0_12px_32px_-20px_rgba(216,95,95,0.95)]"
+                        ? "border border-pv-emerald/40 bg-pv-emerald/[0.18] shadow-[0_12px_32px_-20px_rgba(153,69,255,0.95)]"
                         : "border border-transparent bg-transparent hover:border-black/[0.08] hover:bg-black/[0.03]"
                     }`}
                   >

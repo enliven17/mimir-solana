@@ -7,7 +7,7 @@ import {
   useState,
 } from "react";
 import { motion, useInView, useReducedMotion } from "framer-motion";
-import Plasma from "@/components/Plasma";
+import PlasmaBackdrop from "@/components/PlasmaBackdrop";
 import { Link } from "@/i18n/navigation";
 import PageTransition, { AnimatedItem } from "@/components/PageTransition";
 import { Button } from "@/components/ui";
@@ -279,7 +279,7 @@ export default function HomePage() {
         <section className="relative mb-6 w-full sm:mb-8">
           {/* Plasma WebGL backdrop — full-viewport-bleed */}
           <div className="absolute inset-y-0 left-1/2 z-0 h-full w-screen -translate-x-1/2 overflow-hidden">
-            <Plasma color="#F5AFAF" speed={0.9} scale={1} opacity={0.85} mouseInteractive={false} />
+            <PlasmaBackdrop />
             <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-pv-bg via-pv-bg/35 to-transparent sm:h-32" />
             <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-pv-bg via-pv-bg/60 to-transparent sm:h-40" />
           </div>
@@ -309,7 +309,7 @@ export default function HomePage() {
                   </motion.span>
                   <motion.span
                     variants={kineticLetter}
-                    className="inline-block italic text-pv-emerald drop-shadow-[0_0_18px_rgba(216,95,95,0.5)]"
+                    className="inline-block italic text-pv-emerald drop-shadow-[0_0_18px_rgba(153,69,255,0.5)]"
                   >
                     Mimir.
                   </motion.span>
@@ -363,7 +363,7 @@ export default function HomePage() {
                 {/* Primary CTA — Arena */}
                 <Link
                   href="/arena"
-                  className="group relative flex items-center justify-center overflow-hidden rounded-lg border border-pv-emerald/40 bg-pv-emerald/[0.08] px-7 py-3.5 font-display text-[13px] font-bold uppercase tracking-[0.14em] text-pv-emerald transition-all duration-300 hover:border-pv-emerald/70 hover:bg-pv-emerald/[0.15] hover:text-white hover:shadow-[0_0_28px_-4px_rgba(216,95,95,0.5),inset_0_0_20px_-8px_rgba(216,95,95,0.15)]"
+                  className="group relative flex items-center justify-center overflow-hidden rounded-lg border border-pv-emerald/40 bg-pv-emerald/[0.08] px-7 py-3.5 font-display text-[13px] font-bold uppercase tracking-[0.14em] text-pv-emerald transition-all duration-300 hover:border-pv-emerald/70 hover:bg-pv-emerald/[0.15] hover:text-white hover:shadow-[0_0_28px_-4px_rgba(153,69,255,0.5),inset_0_0_20px_-8px_rgba(153,69,255,0.15)]"
                 >
                   <span className="absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100 bg-gradient-to-r from-pv-emerald/[0.12] via-transparent to-pv-emerald/[0.06]" />
                   <span className="relative">Enter the arena</span>
@@ -690,7 +690,7 @@ export default function HomePage() {
         <AnimatedItem>
           <div className="mb-10">
             <div className="mb-4 flex items-center gap-2">
-              <div className="h-1.5 w-1.5 rounded-full bg-pv-emerald shadow-[0_0_8px_rgba(216,95,95,0.6)]" />
+              <div className="h-1.5 w-1.5 rounded-full bg-pv-emerald shadow-[0_0_8px_rgba(153,69,255,0.6)]" />
               <span className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-pv-emerald">
                 Recently settled
               </span>

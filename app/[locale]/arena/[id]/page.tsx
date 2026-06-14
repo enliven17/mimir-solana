@@ -578,7 +578,7 @@ export default function ArenaClaimPage() {
                 {/* Footer: oracle note + evidence link */}
                 <div className="flex flex-wrap items-center justify-between gap-2 border-t border-black/[0.08] px-5 py-3 sm:px-8">
                   <div className="flex items-center gap-2">
-                    <span className="h-1.5 w-1.5 rounded-full bg-pv-emerald shadow-[0_0_8px_rgba(216,95,95,0.6)]" />
+                    <span className="h-1.5 w-1.5 rounded-full bg-pv-emerald shadow-[0_0_8px_rgba(153,69,255,0.6)]" />
                     <span className="text-xs text-pv-muted">
                       {isFlashOracle ? "Resolves via the Flash Trade oracle" : "Settled by the Mimir AI oracle"}
                     </span>
