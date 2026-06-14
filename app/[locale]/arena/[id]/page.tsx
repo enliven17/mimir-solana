@@ -27,6 +27,7 @@ import {
   challengeInER,
   getVirtualBalance,
 } from "@/lib/solana/browser-client";
+import CouncilVotes from "@/components/arena/CouncilVotes";
 
 interface ArenaClaim {
   id: number;
@@ -794,6 +795,9 @@ export default function ArenaClaimPage() {
                   </div>
                 </div>
               )}
+
+              {/* Council verdict — which AI personas staked this claim */}
+              <CouncilVotes challengers={claim.challengers} />
 
               {/* Challengers list */}
               <div className="card border-black/[0.12] bg-pv-surface">
