@@ -220,14 +220,38 @@ async function settle(client: MimirSolanaClient, claim: OnchainClaim): Promise<v
     console.log("[settle] Claim is back on the base layer");
   }
 
-  // Step 2: evidence + LLM verdict
+  // Step 2: evidence + verdict. If no evidence could be fetched, the LLM can
+  // only return UNRESOLVABLE anyway — skip the call entirely so we don't burn
+  // the (rate-limited) LLM quota on un-decidable claims. This also stops the
+  // expired-claim backlog from re-hammering the API every poll.
   const evidence = await fetchEvidence(claim.resolutionUrl);
   console.log(`[settle] Evidence fetcher: ${evidence.fetcher}`);
   const evidenceHash = createHash("sha256").update(evidence.text).digest();
-  const rawVerdict = await evaluateClaim(claim, evidence.text);
-  const trusted = applyFetcherTrust(rawVerdict, evidence.fetcher, claim.resolutionUrl);
-  const verdict = tierVerdict(trusted);
-  console.log(`[settle] Verdict: ${verdict.verdict} (${verdict.confidence}%)`);
+
+  let verdict: OracleVerdict;
+  if (evidence.fetcher === "none") {
+    verdict = {
+      verdict: "UNRESOLVABLE",
+      confidence: 0,
+      explanation: "No evidence could be fetched from the resolution source — refunded.",
+    };
+    console.log("[settle] No evidence — settling UNRESOLVABLE (refund), LLM skipped");
+  } else {
+    let rawVerdict: OracleVerdict;
+    try {
+      rawVerdict = await evaluateClaim(claim, evidence.text);
+    } catch (err: any) {
+      // LLM rate-limited / cooling down — leave the claim ACTIVE and retry on
+      // a later poll once the quota recovers, instead of spamming stack traces.
+      console.log(
+        `[settle] Claim #${claim.id}: LLM unavailable (${String(err?.message ?? err).slice(0, 50)}) — retry next poll`
+      );
+      return;
+    }
+    const trusted = applyFetcherTrust(rawVerdict, evidence.fetcher, claim.resolutionUrl);
+    verdict = tierVerdict(trusted);
+    console.log(`[settle] Verdict: ${verdict.verdict} (${verdict.confidence}%)`);
+  }
 
   // Step 3: resolve on base layer
   const sig = await client.resolveClaim(
