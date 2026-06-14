@@ -34,6 +34,7 @@ import {
   Connection,
   Keypair,
   LAMPORTS_PER_SOL,
+  PublicKey,
   SystemProgram,
   Transaction,
   sendAndConfirmTransaction,
@@ -72,40 +73,49 @@ interface CouncilMember {
 // USDC arrives from faucet.circle.com into each persona's token account
 // (addresses: scripts/solana/system-status.ts). This sweeps it: SOL for fees
 // from the admin, then deposit into the vault + delegate to the ER.
+async function readAta(connection: Connection, owner: PublicKey): Promise<bigint> {
+  try {
+    const acc = await getAccount(
+      connection,
+      getAssociatedTokenAddressSync(USDC_MINT, owner, true)
+    );
+    return BigInt(acc.amount.toString());
+  } catch {
+    return 0n; // no token account yet
+  }
+}
+
 async function fundPersona(
   connection: Connection,
   admin: Keypair,
   member: CouncilMember
 ): Promise<void> {
   const { client, spec, keypair } = member;
-  const existing = await client.getBalance();
-  if (existing >= toUsdcUnits(2)) {
+
+  // Already has enough ER betting balance — nothing to do.
+  const er = await client.getBalance();
+  if (er >= toUsdcUnits(2)) {
     member.funded = true;
     console.log(
-      `[fund] ${spec.emoji} ${spec.slug}: already ER-ready (${fromUsdcUnits(existing)} USDC)`
+      `[fund] ${spec.emoji} ${spec.slug}: ER-ready (${fromUsdcUnits(er)} USDC)`
     );
     return;
   }
 
-  let ataUnits = 0n;
-  try {
-    const acc = await getAccount(
-      connection,
-      getAssociatedTokenAddressSync(USDC_MINT, keypair.publicKey, true)
-    );
-    ataUnits = BigInt(acc.amount.toString());
-  } catch {
-    // no token account yet — faucet hasn't funded this persona
-  }
-  if (ataUnits < toUsdcUnits(2)) {
+  // ER is low. Winnings (payouts) land in the token account, not the ER
+  // balance, so a persona that wins eventually runs its ER balance to zero
+  // while USDC piles up in its ATA. Sweep that back in. If the balance PDA is
+  // delegated we must undelegate first — base-layer deposit can't write to a
+  // delegated PDA.
+  const ata = await readAta(connection, keypair.publicKey);
+  if (ata < toUsdcUnits(2)) {
     console.log(
-      `[fund] ${spec.emoji} ${spec.slug}: no USDC yet — send some via faucet.circle.com → ` +
-        keypair.publicKey.toBase58()
+      `[fund] ${spec.emoji} ${spec.slug}: no USDC to fund (ER ${fromUsdcUnits(er)}, ATA ${fromUsdcUnits(ata)})`
     );
     return;
   }
 
-  console.log(`[fund] ${spec.emoji} ${spec.slug}: sweeping ${fromUsdcUnits(ataUnits)} USDC into the ER...`);
+  // Top up SOL for the base-layer fees this rebalance needs.
   const sol = await connection.getBalance(keypair.publicKey);
   if (sol < 0.01 * LAMPORTS_PER_SOL) {
     await sendAndConfirmTransaction(
@@ -120,10 +130,32 @@ async function fundPersona(
       [admin]
     );
   }
-  await client.deposit(ataUnits);
+
+  // Pull the balance PDA back to the base layer if it's delegated (so deposit
+  // can credit it), then re-sweep the ATA and re-delegate.
+  if (await client.isBalanceDelegated(keypair.publicKey)) {
+    console.log(`[fund] ${spec.emoji} ${spec.slug}: rebalancing — undelegating ER balance…`);
+    try {
+      await client.undelegateBalance();
+    } catch (err: any) {
+      console.warn(`[fund] ${spec.slug} undelegate failed:`, err?.message ?? err);
+    }
+    for (let i = 0; i < 20; i++) {
+      await new Promise((r) => setTimeout(r, 1500));
+      if (!(await client.isBalanceDelegated(keypair.publicKey))) break;
+    }
+  }
+
+  const sweep = await readAta(connection, keypair.publicKey);
+  if (sweep < toUsdcUnits(2)) {
+    console.log(`[fund] ${spec.emoji} ${spec.slug}: nothing to sweep after undelegate`);
+    return;
+  }
+  console.log(`[fund] ${spec.emoji} ${spec.slug}: sweeping ${fromUsdcUnits(sweep)} USDC into the ER…`);
+  await client.deposit(sweep);
   await client.delegateBalance();
   member.funded = true;
-  console.log(`[fund] ${spec.emoji} ${spec.slug}: ✓ ${fromUsdcUnits(ataUnits)} USDC delegated to the ER`);
+  console.log(`[fund] ${spec.emoji} ${spec.slug}: ✓ ${fromUsdcUnits(sweep)} USDC delegated to the ER`);
 }
 
 // ── Evidence cache (one fetch per claim per cycle, shared by all personas) ─
@@ -311,15 +343,17 @@ async function main() {
   const reader = new MimirSolanaClient(admin);
   const safeCycle = async () => {
     try {
-      // Faucet USDC can arrive any time — keep retrying unfunded personas.
+      // Run fundPersona for everyone every cycle (not just unfunded ones):
+      // a persona that wins drains its ER balance to zero over time while
+      // winnings pile up in its ATA, so fundPersona rebalances (undelegate →
+      // deposit → delegate). It returns cheaply when the ER balance is fine.
       for (const member of members) {
-        if (member.funded) continue;
         try {
           await fundPersona(connection, admin, member);
         } catch (err: any) {
           console.warn(`[fund] ${member.spec.slug} retry failed:`, err?.message ?? err);
         }
-        await new Promise((r) => setTimeout(r, 1500));
+        await new Promise((r) => setTimeout(r, 1000));
       }
       await cycle(members, reader);
     } catch (err) {

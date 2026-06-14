@@ -361,6 +361,13 @@ export class MimirSolanaClient {
     return !info.owner.equals(this.base.programId);
   }
 
+  /** Is a user's balance PDA currently delegated to the ER? */
+  async isBalanceDelegated(user: PublicKey = this.publicKey): Promise<boolean> {
+    const info = await this.baseConnection.getAccountInfo(balancePda(user));
+    if (!info) return false; // no PDA yet → not delegated
+    return !info.owner.equals(this.base.programId);
+  }
+
   async getAllClaims(): Promise<OnchainClaim[]> {
     const cfg = await this.getConfig();
     if (!cfg) return [];
