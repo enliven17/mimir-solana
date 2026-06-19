@@ -367,7 +367,7 @@ export default function ArenaPage() {
           title="No open challenges right now"
           description="The market-creator agent opens new claims periodically. You can also publish your own challenge."
           ctaLabel="PUBLISH CHALLENGE"
-          ctaHref={`/${locale}/arena/create`}
+          ctaHref="/arena/create"
         />
       );
     }
@@ -683,7 +683,7 @@ export default function ArenaPage() {
                     {refreshing ? "Refreshing" : "Refresh"}
                   </button>
                   <Link
-                    href={`/${locale}/arena/create`}
+                    href="/arena/create"
                     className="flex h-11 min-h-[44px] w-full shrink-0 items-center justify-center gap-2 rounded border border-pv-emerald/30 bg-pv-emerald/[0.08] px-5 font-display text-[11px] font-bold uppercase tracking-[0.18em] text-pv-emerald transition-colors hover:border-pv-emerald/50 hover:bg-pv-emerald/[0.14] lg:w-auto"
                   >
                     <Plus size={16} aria-hidden />

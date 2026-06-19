@@ -8,7 +8,7 @@
 import { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { Link, usePathname } from "@/i18n/navigation";
-import { Menu, X } from "lucide-react";
+import { Menu, Plus, X } from "lucide-react";
 import ThemeToggle from "./ThemeToggle";
 
 // wallet-adapter button is client-only (touches window) — load without SSR.
@@ -74,6 +74,13 @@ export default function Header() {
             );
           })}
           <ThemeToggle />
+          <Link
+            href="/arena/create"
+            className="flex items-center gap-1.5 rounded-lg border border-pv-emerald/30 bg-pv-emerald/[0.08] px-3 py-1.5 font-display text-[11px] font-bold uppercase tracking-[0.16em] text-pv-emerald transition-colors hover:border-pv-emerald/50 hover:bg-pv-emerald/[0.14]"
+          >
+            <Plus size={13} aria-hidden />
+            Publish
+          </Link>
           <WalletMultiButton />
         </div>
 
@@ -102,6 +109,13 @@ export default function Header() {
                 {item.label}
               </Link>
             ))}
+            <Link
+              href="/arena/create"
+              className="flex items-center gap-1.5 rounded-lg border border-pv-emerald/30 bg-pv-emerald/[0.08] px-3 py-2 font-display text-[11px] font-bold uppercase tracking-[0.16em] text-pv-emerald"
+            >
+              <Plus size={13} aria-hidden />
+              Publish Challenge
+            </Link>
             <div className="pt-2">
               <WalletMultiButton />
             </div>
