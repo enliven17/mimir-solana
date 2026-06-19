@@ -175,6 +175,7 @@ export default function ArenaClaimPage() {
   const [stake, setStake] = useState("2");
   const [busy, setBusy] = useState<string | null>(null);
   const [log, setLog] = useState<string[]>([]);
+  const [lastChallengeSig, setLastChallengeSig] = useState<string | null>(null);
   const [balance, setBalance] = useState<bigint>(0n);
   const [termsOpen, setTermsOpen] = useState(false);
   const termsHeadingId = useId();
@@ -224,7 +225,8 @@ export default function ArenaClaimPage() {
       setBusy("Challenging inside the Ephemeral Rollup…");
       const t0 = Date.now();
       const sig = await challengeInER(mimir, BigInt(claim.id), units);
-      pushLog(`⚡ Challenge landed in ${Date.now() - t0}ms — zero fee (${sig.slice(0, 20)}…)`);
+      setLastChallengeSig(sig);
+      pushLog(`⚡ Challenge landed in ${Date.now() - t0}ms — zero fee, on-chain`);
       await refresh();
     } catch (err: any) {
       pushLog(`✗ ${err?.message ?? err}`);
@@ -751,6 +753,26 @@ export default function ArenaClaimPage() {
                           </li>
                         ))}
                       </ul>
+                    )}
+                    {lastChallengeSig && (
+                      <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-pv-fuch/25 bg-pv-fuch/[0.06] px-3 py-2.5">
+                        <div className="min-w-0">
+                          <p className="font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-pv-fuch">
+                            Challenge tx · MagicBlock ER
+                          </p>
+                          <p className="mt-0.5 font-mono text-[10px] text-pv-muted break-all">
+                            {lastChallengeSig.slice(0, 28)}…
+                          </p>
+                        </div>
+                        <a
+                          href={`https://explorer.magicblock.app/tx/${lastChallengeSig}?cluster=devnet`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="shrink-0 rounded-md border border-pv-fuch/35 bg-pv-fuch/[0.10] px-2.5 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-pv-fuch transition-colors hover:border-pv-fuch/55 hover:bg-pv-fuch/[0.18]"
+                        >
+                          ↗ Explorer
+                        </a>
+                      </div>
                     )}
                   </div>
                 </div>

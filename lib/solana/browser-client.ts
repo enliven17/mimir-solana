@@ -104,14 +104,14 @@ export async function challengeInER(
     .rpc({ skipPreflight: true });
 }
 
-/** Create a new claim (base layer). Returns the new claim ID. */
+/** Create a new claim (base layer). Returns the new claim ID and tx signature. */
 export async function createClaim(
   m: BrowserMimir,
   input: CreateClaimInput
-): Promise<{ claimId: bigint }> {
+): Promise<{ claimId: bigint; txSig: string }> {
   const cfg: any = await (m.base.account as any).config.fetch(configPda());
   const nextId = BigInt(cfg.claimCount.toString()) + 1n;
-  await m.base.methods
+  const txSig = await m.base.methods
     .createClaim({
       question: input.question,
       creatorPosition: input.creatorPosition,
@@ -128,7 +128,7 @@ export async function createClaim(
       creatorToken: getAssociatedTokenAddressSync(USDC_MINT, m.owner, true),
     })
     .rpc();
-  return { claimId: nextId };
+  return { claimId: nextId, txSig };
 }
 
 /** Delegate a claim PDA to the MagicBlock ER. */

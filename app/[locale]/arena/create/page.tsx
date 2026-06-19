@@ -116,6 +116,8 @@ export default function CreateMarketPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [createdId, setCreatedId] = useState<bigint | null>(null);
+  const [createTxSig, setCreateTxSig] = useState<string | null>(null);
+  const [delegateTxSig, setDelegateTxSig] = useState<string | null>(null);
 
   useLayoutEffect(() => {
     setCustomDateInputMin(formatLocalDateInputValue(new Date()));
@@ -164,7 +166,7 @@ export default function CreateMarketPage() {
     const deadline = Math.floor(new Date(customDeadline).getTime() / 1000);
     try {
       setBusy(t("funding"));
-      const { claimId } = await createClaim(mimir, {
+      const { claimId, txSig } = await createClaim(mimir, {
         question: question.trim(),
         creatorPosition: creatorPos.trim(),
         counterPosition: opponentPos.trim(),
@@ -174,8 +176,10 @@ export default function CreateMarketPage() {
         deadline,
         maxChallengers: 16,
       });
+      setCreateTxSig(txSig);
       setBusy("Delegating to MagicBlock ER…");
-      await delegateClaim(mimir, claimId);
+      const delSig = await delegateClaim(mimir, claimId);
+      setDelegateTxSig(delSig);
       setCreatedId(claimId);
       setBusy(null);
     } catch (err: any) {
@@ -187,33 +191,74 @@ export default function CreateMarketPage() {
   // ── Success state ────────────────────────────────────────────────────────
   if (createdId !== null) {
     const claimPath = `/arena/${createdId}`;
+    const explorerBase = "https://explorer.solana.com/tx";
+    const erExplorerBase = "https://explorer.magicblock.app/tx";
     return (
       <PageTransition className="mx-auto w-full max-w-2xl px-4 pb-20 pt-8 sm:px-6">
         <AnimatedItem>
-          <GlassCard glass noPad glow="emerald" className="!rounded-2xl border border-pv-emerald/30 text-center">
-            <div className="space-y-6 p-8 sm:p-12">
-              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl border-2 border-pv-emerald bg-pv-emerald/10">
-                <span className="font-display text-3xl">✶</span>
-              </div>
-              <div>
-                <p className="font-mono text-[10px] font-bold uppercase tracking-[0.22em] text-pv-emerald">
+          <GlassCard glass noPad glow="emerald" className="!rounded-2xl border border-pv-emerald/30">
+            <div className="space-y-6 p-8 sm:p-10">
+              <div className="text-center">
+                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border-2 border-pv-emerald bg-pv-emerald/10">
+                  <span className="font-display text-2xl">✶</span>
+                </div>
+                <p className="mt-3 font-mono text-[10px] font-bold uppercase tracking-[0.22em] text-pv-emerald">
                   {t("createSuccessBadgeLive")}
                 </p>
-                <h2 className="mt-2 font-display text-2xl font-bold uppercase tracking-tight text-pv-text sm:text-3xl">
+                <h2 className="mt-1 font-display text-2xl font-bold uppercase tracking-tight text-pv-text sm:text-3xl">
                   {t("createSuccessHeadline")}
                 </h2>
               </div>
+
+              {/* On-chain transaction proof */}
+              <div className="rounded-xl border border-black/[0.1] bg-pv-bg/60 p-4 space-y-3">
+                <p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-pv-emerald/80">
+                  On-chain proof
+                </p>
+                {createTxSig && (
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-pv-muted">Create & fund</p>
+                      <p className="mt-0.5 font-mono text-[11px] text-pv-text/70 break-all">{createTxSig.slice(0, 24)}…</p>
+                    </div>
+                    <a
+                      href={`${explorerBase}/${createTxSig}?cluster=devnet`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="shrink-0 rounded-md border border-pv-cyan/30 bg-pv-cyan/[0.08] px-2.5 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-pv-cyan transition-colors hover:border-pv-cyan/50 hover:bg-pv-cyan/[0.14]"
+                    >
+                      ↗ Solana
+                    </a>
+                  </div>
+                )}
+                {delegateTxSig && (
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-pv-muted">Delegate → MagicBlock ER</p>
+                      <p className="mt-0.5 font-mono text-[11px] text-pv-text/70 break-all">{delegateTxSig.slice(0, 24)}…</p>
+                    </div>
+                    <a
+                      href={`${erExplorerBase}/${delegateTxSig}?cluster=devnet`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="shrink-0 rounded-md border border-pv-fuch/30 bg-pv-fuch/[0.08] px-2.5 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-pv-fuch transition-colors hover:border-pv-fuch/50 hover:bg-pv-fuch/[0.14]"
+                    >
+                      ↗ ER
+                    </a>
+                  </div>
+                )}
+              </div>
+
               <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
                 <Link href={claimPath}>
                   <Button variant="primary" fullWidth={false} className="min-w-[12rem] rounded-2xl py-4 font-display text-sm font-bold uppercase tracking-widest">
                     {t("viewVS")}
                   </Button>
                 </Link>
-                <Button variant="ghost" fullWidth={false} onClick={() => { setCreatedId(null); setQuestion(""); setCreatorPos(""); setOpponentPos(""); setUrl(""); setSettlementRule(""); }} className="min-w-[10rem] rounded-2xl py-4 font-display text-sm font-bold uppercase tracking-widest">
+                <Button variant="ghost" fullWidth={false} onClick={() => { setCreatedId(null); setCreateTxSig(null); setDelegateTxSig(null); setQuestion(""); setCreatorPos(""); setOpponentPos(""); setUrl(""); setSettlementRule(""); }} className="min-w-[10rem] rounded-2xl py-4 font-display text-sm font-bold uppercase tracking-widest">
                   {t("createAnother")}
                 </Button>
               </div>
-              <p className="text-[11px] text-pv-muted">{t("ticketSignatureNote")}</p>
             </div>
           </GlassCard>
         </AnimatedItem>

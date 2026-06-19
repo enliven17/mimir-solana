@@ -15,7 +15,9 @@ import { loadAgentKeypair } from "../../lib/solana/keypair";
 import { MimirSolanaClient } from "../../lib/solana/client";
 import { isIndexEnabled, upsertClaim } from "../../lib/server/solana-index";
 
-const POLL_INTERVAL_MS = Number(process.env.INDEXER_POLL_INTERVAL_MS ?? "15000");
+const POLL_INTERVAL_MS = Number(process.env.INDEXER_POLL_INTERVAL_MS ?? "30000");
+// Small pause between getClaim calls to stay within public RPC rate limits.
+const CLAIM_FETCH_DELAY_MS = Number(process.env.INDEXER_CLAIM_DELAY_MS ?? "150");
 
 async function cycle(client: MimirSolanaClient): Promise<void> {
   const cfg = await client.getConfig();
@@ -25,12 +27,20 @@ async function cycle(client: MimirSolanaClient): Promise<void> {
   }
   const now = Math.floor(Date.now() / 1000);
   let written = 0;
-  for (let id = 1n; id <= cfg.claimCount; id++) {
-    const [claim, delegated] = await Promise.all([
-      client.getClaim(id),
-      client.isDelegated(id),
-    ]);
-    if (!claim) continue;
+
+  // Batch-fetch delegation status for ALL claims in a single getMultipleAccountsInfo
+  // call instead of N individual getAccountInfo calls.
+  const allIds: bigint[] = [];
+  for (let id = 1n; id <= cfg.claimCount; id++) allIds.push(id);
+  const delegatedMap = await client.isDelegatedBatch(allIds);
+
+  for (const id of allIds) {
+    const [claim] = await Promise.all([client.getClaim(id)]);
+    const delegated = delegatedMap.get(id) ?? false;
+    if (!claim) {
+      if (CLAIM_FETCH_DELAY_MS > 0) await new Promise((r) => setTimeout(r, CLAIM_FETCH_DELAY_MS));
+      continue;
+    }
     await upsertClaim({
       id: Number(claim.id),
       creator: claim.creator.toBase58(),
@@ -57,6 +67,7 @@ async function cycle(client: MimirSolanaClient): Promise<void> {
       updated_at: now,
     });
     written++;
+    if (CLAIM_FETCH_DELAY_MS > 0) await new Promise((r) => setTimeout(r, CLAIM_FETCH_DELAY_MS));
   }
   console.log(`[indexer] ${new Date().toISOString()} — synced ${written}/${cfg.claimCount} claims`);
 }

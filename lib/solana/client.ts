@@ -361,6 +361,25 @@ export class MimirSolanaClient {
     return !info.owner.equals(this.base.programId);
   }
 
+  /**
+   * Batch delegation check — single getMultipleAccountsInfo call for all IDs.
+   * Replaces N individual isDelegated() calls with one RPC round-trip.
+   */
+  async isDelegatedBatch(ids: bigint[]): Promise<Map<bigint, boolean>> {
+    const CHUNK = 100; // getMultipleAccountsInfo limit
+    const result = new Map<bigint, boolean>();
+    for (let i = 0; i < ids.length; i += CHUNK) {
+      const slice = ids.slice(i, i + CHUNK);
+      const keys = slice.map((id) => claimPda(id));
+      const infos = await this.baseConnection.getMultipleAccountsInfo(keys);
+      for (let j = 0; j < slice.length; j++) {
+        const info = infos[j];
+        result.set(slice[j], info != null && !info.owner.equals(this.base.programId));
+      }
+    }
+    return result;
+  }
+
   /** Is a user's balance PDA currently delegated to the ER? */
   async isBalanceDelegated(user: PublicKey = this.publicKey): Promise<boolean> {
     const info = await this.baseConnection.getAccountInfo(balancePda(user));
