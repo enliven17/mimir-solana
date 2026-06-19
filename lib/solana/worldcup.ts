@@ -42,10 +42,12 @@ export interface WcDraft {
   label: string;
 }
 
-/** A search page the oracle can scrape for the result after the deadline. */
-function searchUrl(query: string): string {
-  return `https://www.google.com/search?q=${encodeURIComponent(query)}`;
-}
+/**
+ * ESPN's public World Cup scoreboard API — free, no key, returns JSON with all
+ * match scores. The oracle's ESPN handler formats it and the LLM finds the
+ * specific match by team names.
+ */
+const ESPN_WC_SCOREBOARD = "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard?limit=100";
 
 function pick<T>(arr: T[]): T {
   // No Math.random ban here (this is a worker, not a workflow script).
@@ -71,7 +73,7 @@ const TEMPLATES: Template[] = [
       question: `Will ${home} beat ${away} when they meet at the 2026 World Cup?`,
       creatorPosition: `Yes — ${home} wins`,
       counterPosition: `No — draw or ${away} wins`,
-      resolutionUrl: searchUrl(`${home} vs ${away} World Cup 2026 result score`),
+      resolutionUrl: ESPN_WC_SCOREBOARD,
     };
   },
   // Over/under goals
@@ -83,7 +85,7 @@ const TEMPLATES: Template[] = [
       question: `Will the ${home} vs ${away} World Cup match have more than 2.5 total goals?`,
       creatorPosition: "Yes — 3 or more goals",
       counterPosition: "No — 2 goals or fewer",
-      resolutionUrl: searchUrl(`${home} vs ${away} World Cup 2026 final score goals`),
+      resolutionUrl: ESPN_WC_SCOREBOARD,
     };
   },
   // Player to score
@@ -95,7 +97,7 @@ const TEMPLATES: Template[] = [
       question: `Will ${p.name} score for ${p.team} in their next 2026 World Cup match?`,
       creatorPosition: `Yes — ${p.name} scores`,
       counterPosition: `No — ${p.name} doesn't score`,
-      resolutionUrl: searchUrl(`${p.name} goal ${p.team} World Cup 2026 match`),
+      resolutionUrl: ESPN_WC_SCOREBOARD,
     };
   },
   // Both teams to score
@@ -107,7 +109,7 @@ const TEMPLATES: Template[] = [
       question: `Will both ${home} and ${away} score in their 2026 World Cup match?`,
       creatorPosition: "Yes — both teams score",
       counterPosition: "No — at least one team is kept scoreless",
-      resolutionUrl: searchUrl(`${home} vs ${away} World Cup 2026 score both teams scored`),
+      resolutionUrl: ESPN_WC_SCOREBOARD,
     };
   },
 ];
