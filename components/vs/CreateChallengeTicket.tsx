@@ -9,17 +9,12 @@ function truncate(s: string, max: number) {
   return `${t.slice(0, max - 1)}…`;
 }
 
-/** Vista compacta: 0x + 4 hex, "...", últimos 4 caracteres (p. ej. 0x71C7…1a2b). */
+/** Compact display for a Solana base58 address: first 4 chars + "..." + last 4. */
 function formatWalletForTicket(address: string | null | undefined): string {
-  if (!address || typeof address !== "string") {
-    return "—";
-  }
+  if (!address || typeof address !== "string") return "—";
   const a = address.trim();
-  const normalized = a.startsWith("0x") ? a : `0x${a}`;
-  if (normalized.length < 12) {
-    return normalized;
-  }
-  return `${normalized.slice(0, 6)}...${normalized.slice(-4)}`;
+  if (a.length < 10) return a;
+  return `${a.slice(0, 4)}...${a.slice(-4)}`;
 }
 
 export type CreateChallengeTicketProps = {

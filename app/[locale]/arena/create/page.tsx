@@ -1,28 +1,92 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import {
+  useCallback,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useState,
+} from "react";
+import { motion } from "framer-motion";
+import { useTranslations } from "next-intl";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { Link, useRouter } from "@/i18n/navigation";
-import { Clock, Coins, FileEdit, Link2, User, Users, Zap } from "lucide-react";
+import {
+  ChevronDown,
+  Clock,
+  Coins,
+  FileEdit,
+  Link2,
+  SlidersHorizontal,
+  User,
+  Users,
+  Wand2,
+  Zap,
+} from "lucide-react";
+import PageTransition, { AnimatedItem } from "@/components/PageTransition";
+import { GlassCard, Button } from "@/components/ui";
+import CreateChallengeTicket from "@/components/vs/CreateChallengeTicket";
 import {
   createBrowserMimir,
   createClaim,
   delegateClaim,
 } from "@/lib/solana/browser-client";
+import {
+  CATEGORIES,
+  CATEGORY_GUIDANCE,
+  DEADLINE_PRESET_IDS,
+  DEADLINE_PRESET_SECONDS,
+  MIN_STAKE,
+  normalizeCategoryId,
+} from "@/lib/constants";
 
-const CATEGORIES = ["crypto", "sports", "politics", "general"] as const;
+const STAKE_PRESET_AMOUNTS = [MIN_STAKE, 5, 10, 25] as const;
 
-const DEADLINE_PRESETS = [
-  { label: "30 min", minutes: 30 },
-  { label: "1 hour", minutes: 60 },
-  { label: "4 hours", minutes: 240 },
-  { label: "24 hours", minutes: 1440 },
-] as const;
+function isPresetStakeAmount(v: number) {
+  return (STAKE_PRESET_AMOUNTS as readonly number[]).includes(v);
+}
 
-const STAKE_PRESETS = [1, 2, 5, 10] as const;
+function formatLocalDateInputValue(date: Date) {
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 10);
+}
+function formatLocalTimeInputValue(date: Date) {
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(11, 16);
+}
+
+function draftOutcomeSides(question: string): { creator: string; opponent: string } | null {
+  const q = question.replace(/[¿¡]/g, "").replace(/\s+/g, " ").replace(/[?!]+$/, "").trim();
+  if (!q) return null;
+  const m = q.match(/^(.+?)\s+(will|is|are|can|has|have)\s+(.+)$/i);
+  if (m) {
+    const [, subj = "", aux = "", pred = ""] = m;
+    return {
+      creator: `${subj.trim()} ${aux.toLowerCase()} ${pred.trim()}`,
+      opponent: `${subj.trim()} ${aux.toLowerCase()} not ${pred.trim()}`,
+    };
+  }
+  const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+  return { creator: `Yes - ${cap(q)}`, opponent: `No - ${cap(q)}` };
+}
+
+// FNV-1a hash for ticket draft ID (same approach as original mimir)
+function computeDraftId(question: string, creatorPos: string, stake: number): string {
+  const s = `${question}|${creatorPos}|${stake}|binary|pool`;
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  const n = Math.abs(h);
+  const part = (n % 0xffff).toString(16).toUpperCase().padStart(4, "0");
+  const suffix = String.fromCharCode(65 + (n % 26));
+  return `PRV-${part}-${suffix}`;
+}
 
 export default function CreateMarketPage() {
+  const t = useTranslations("create");
   const router = useRouter();
   const wallet = useWallet();
   const mimir = useMemo(
@@ -31,36 +95,80 @@ export default function CreateMarketPage() {
     [wallet.publicKey, wallet.signTransaction]
   );
 
+  const challengeFieldUid = useId().replace(/:/g, "");
+  const challengeHeadingId = `create-challenge-heading-${challengeFieldUid}`;
+  const termsPanelId = `create-advanced-${challengeFieldUid}`;
+
   const [question, setQuestion] = useState("");
   const [creatorPos, setCreatorPos] = useState("");
   const [opponentPos, setOpponentPos] = useState("");
-  const [category, setCategory] = useState<(typeof CATEGORIES)[number]>("general");
-  const [resolutionUrl, setResolutionUrl] = useState("");
-  const [deadlineMinutes, setDeadlineMinutes] = useState(60);
-  const [stake, setStake] = useState(2);
-  const [customStake, setCustomStake] = useState("");
+  const [url, setUrl] = useState("");
+  const [deadlinePreset, setDeadlinePreset] = useState<number | null>(null);
+  const [customDeadlineDate, setCustomDeadlineDate] = useState("");
+  const [customDeadlineTime, setCustomDeadlineTime] = useState("");
+  const [customDateInputMin, setCustomDateInputMin] = useState<string | undefined>(undefined);
+  const [stake, setStake] = useState(5);
+  const [customStakeDraft, setCustomStakeDraft] = useState("");
+  const [customStakeFocused, setCustomStakeFocused] = useState(false);
+  const [category, setCategory] = useState("custom");
+  const [settlementRule, setSettlementRule] = useState("");
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [createdId, setCreatedId] = useState<bigint | null>(null);
 
-  const effectiveStake = customStake.trim() ? Math.max(1, Math.floor(Number(customStake))) : stake;
+  useLayoutEffect(() => {
+    setCustomDateInputMin(formatLocalDateInputValue(new Date()));
+  }, []);
+
+  function applyDeadlinePreset(seconds: number) {
+    const d = new Date(Date.now() + seconds * 1000);
+    setDeadlinePreset(seconds);
+    setCustomDeadlineDate(formatLocalDateInputValue(d));
+    setCustomDeadlineTime(formatLocalTimeInputValue(d));
+  }
+
+  const customDeadline = useMemo(() => {
+    if (!customDeadlineDate || !customDeadlineTime) return "";
+    return `${customDeadlineDate}T${customDeadlineTime}`;
+  }, [customDeadlineDate, customDeadlineTime]);
+
+  const presetStakeHighlight =
+    isPresetStakeAmount(stake) && !customStakeFocused && customStakeDraft.trim() === "";
+
+  const guidanceKey = category in CATEGORY_GUIDANCE ? category : "custom";
+  const categoryGuidance = CATEGORY_GUIDANCE[guidanceKey as keyof typeof CATEGORY_GUIDANCE] ?? CATEGORY_GUIDANCE.custom;
+  const recommendedSettlementTemplate = categoryGuidance.settlementTemplate;
+  const ticketSettlementPreview = settlementRule.trim() || recommendedSettlementTemplate;
+  const questionNeedsWork = question.trim().length > 0 && question.trim().length < 24;
+  const sourceNeedsWork = url.trim().length > 0 && !/^https?:\/\//.test(url.trim());
+  const ticketDraftId = useMemo(() => computeDraftId(question, creatorPos, stake), [question, creatorPos, stake]);
+  const walletAddress = wallet.publicKey?.toBase58() ?? null;
 
   const onSubmit = useCallback(async () => {
     if (!mimir) return;
     setError(null);
     if (!question.trim() || !creatorPos.trim() || !opponentPos.trim()) {
-      setError("Question and both positions are required");
+      setError(t("fillAllFields"));
       return;
     }
-    const stakeUnits = BigInt(Math.round(effectiveStake * 1e6));
-    if (stakeUnits < 1_000_000n) { setError("Minimum stake is 1 USDC"); return; }
-    const deadline = Math.floor(Date.now() / 1000) + deadlineMinutes * 60;
+    if (!customDeadline) {
+      setError(t("invalidDeadline"));
+      return;
+    }
+    const stakeUnits = BigInt(Math.round(stake * 1e6));
+    if (stakeUnits < BigInt(MIN_STAKE * 1e6)) {
+      setError(t("invalidStakeMin", { amount: MIN_STAKE }));
+      return;
+    }
+    const deadline = Math.floor(new Date(customDeadline).getTime() / 1000);
     try {
-      setBusy("Creating claim on Solana…");
+      setBusy(t("funding"));
       const { claimId } = await createClaim(mimir, {
         question: question.trim(),
         creatorPosition: creatorPos.trim(),
         counterPosition: opponentPos.trim(),
-        resolutionUrl: resolutionUrl.trim(),
+        resolutionUrl: url.trim(),
         category,
         stakeAmount: stakeUnits,
         deadline,
@@ -68,245 +176,482 @@ export default function CreateMarketPage() {
       });
       setBusy("Delegating to MagicBlock ER…");
       await delegateClaim(mimir, claimId);
-      router.push(`/arena/${claimId}`);
+      setCreatedId(claimId);
+      setBusy(null);
     } catch (err: any) {
-      setError(err?.message ?? "Transaction failed");
+      setError(err?.message ?? t("errorCreating"));
       setBusy(null);
     }
-  }, [mimir, question, creatorPos, opponentPos, resolutionUrl, category, effectiveStake, deadlineMinutes, router]);
+  }, [mimir, question, creatorPos, opponentPos, url, category, stake, customDeadline, t]);
 
-  const sectionCls = "space-y-4 rounded-2xl border border-black/[0.08] bg-pv-surface/60 p-6 sm:p-8";
-  const sectionHeadingCls = "flex items-center gap-2.5 font-display text-xs font-bold uppercase tracking-[0.18em] text-pv-text";
-  const sectionIconCls = "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-pv-emerald/10 text-pv-emerald";
-  const presetActiveCls = "border-pv-emerald bg-pv-emerald/[0.12] text-pv-emerald shadow-[0_0_16px_-8px_rgba(52,211,153,0.3)]";
-  const presetIdleCls = "border border-black/[0.12] bg-pv-surface text-pv-muted hover:border-pv-emerald/35 hover:text-pv-emerald";
-  const presetBaseCls = "rounded-lg border px-3 py-2.5 font-display text-[11px] font-bold transition-[border-color,background-color,color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pv-emerald/35";
+  // ── Success state ────────────────────────────────────────────────────────
+  if (createdId !== null) {
+    const claimPath = `/arena/${createdId}`;
+    return (
+      <PageTransition className="mx-auto w-full max-w-2xl px-4 pb-20 pt-8 sm:px-6">
+        <AnimatedItem>
+          <GlassCard glass noPad glow="emerald" className="!rounded-2xl border border-pv-emerald/30 text-center">
+            <div className="space-y-6 p-8 sm:p-12">
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl border-2 border-pv-emerald bg-pv-emerald/10">
+                <span className="font-display text-3xl">✶</span>
+              </div>
+              <div>
+                <p className="font-mono text-[10px] font-bold uppercase tracking-[0.22em] text-pv-emerald">
+                  {t("createSuccessBadgeLive")}
+                </p>
+                <h2 className="mt-2 font-display text-2xl font-bold uppercase tracking-tight text-pv-text sm:text-3xl">
+                  {t("createSuccessHeadline")}
+                </h2>
+              </div>
+              <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
+                <Link href={claimPath}>
+                  <Button variant="primary" fullWidth={false} className="min-w-[12rem] rounded-2xl py-4 font-display text-sm font-bold uppercase tracking-widest">
+                    {t("viewVS")}
+                  </Button>
+                </Link>
+                <Button variant="ghost" fullWidth={false} onClick={() => { setCreatedId(null); setQuestion(""); setCreatorPos(""); setOpponentPos(""); setUrl(""); setSettlementRule(""); }} className="min-w-[10rem] rounded-2xl py-4 font-display text-sm font-bold uppercase tracking-widest">
+                  {t("createAnother")}
+                </Button>
+              </div>
+              <p className="text-[11px] text-pv-muted">{t("ticketSignatureNote")}</p>
+            </div>
+          </GlassCard>
+        </AnimatedItem>
+      </PageTransition>
+    );
+  }
 
+  // ── Form ─────────────────────────────────────────────────────────────────
   return (
-    <div className="mx-auto w-full max-w-2xl px-4 pb-20 pt-4 sm:px-6">
-      {/* Top bar */}
-      <div className="mb-8 flex items-center justify-between gap-4">
-        <Link
-          href="/arena"
-          className="inline-flex items-center gap-2 rounded-lg border border-transparent px-2 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-pv-muted transition-[color,border-color,background-color] hover:border-black/[0.1] hover:bg-black/[0.04] hover:text-pv-text"
-        >
-          ← Arena
-        </Link>
-        <WalletMultiButton />
-      </div>
-
-      <div className="mb-8">
+    <PageTransition className="relative z-[1] mx-auto w-full max-w-[1280px] px-4 pb-20 pt-4 sm:px-6">
+      {/* Page header */}
+      <AnimatedItem className="mb-8 sm:mb-10">
+        <div className="mb-4 flex flex-wrap items-center gap-4 sm:gap-6">
+          <Link
+            href="/arena"
+            className="inline-flex items-center gap-2 rounded-lg border border-transparent px-2 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-pv-muted transition-[color,border-color,background-color] hover:border-black/[0.1] hover:bg-black/[0.04] hover:text-pv-text"
+          >
+            ← Arena
+          </Link>
+        </div>
         <p className="font-mono text-[10px] font-bold uppercase tracking-[0.22em] text-pv-emerald">
-          PUBLISH CHALLENGE
+          {t("pageTitleBefore")}
         </p>
-        <h1 className="mt-2 font-display text-2xl font-bold uppercase tracking-tight text-pv-text sm:text-3xl">
-          CREATE A MARKET
+        <h1 className="mt-1 font-display text-2xl font-bold uppercase tracking-tight text-pv-text sm:text-3xl md:text-4xl">
+          {t("pageTitleAccent")}
         </h1>
-        <p className="mt-2 text-sm leading-relaxed text-pv-muted">
-          Stake USDC on your prediction. Challengers take the opposite side.
-          The Mimir oracle settles at the deadline.
-        </p>
-      </div>
+      </AnimatedItem>
 
       {!wallet.connected ? (
-        <div className="rounded-2xl border border-black/[0.08] bg-pv-surface/60 p-8 text-center">
-          <p className="mb-4 text-sm text-pv-muted">Connect your wallet to publish a challenge</p>
-          <WalletMultiButton />
-        </div>
+        <AnimatedItem>
+          <GlassCard glass noPad glow="none" className="!rounded-2xl border border-black/[0.12]">
+            <div className="flex flex-col items-center gap-4 p-8 text-center sm:p-12">
+              <p className="text-sm text-pv-muted">Connect your wallet to publish a challenge.</p>
+              <WalletMultiButton />
+            </div>
+          </GlassCard>
+        </AnimatedItem>
       ) : (
-        <div className="space-y-4">
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-12 lg:items-start lg:gap-8">
+          {/* ── Left column: form ── */}
+          <div className="min-w-0 space-y-5 lg:col-span-8">
 
-          {/* Question */}
-          <div className={sectionCls}>
-            <h2 className={sectionHeadingCls}>
-              <span className={sectionIconCls} aria-hidden><FileEdit size={16} strokeWidth={2} /></span>
-              Challenge
-            </h2>
-            <div className="relative">
-              <div className="absolute inset-0 rounded-2xl pointer-events-none bg-gradient-to-br from-pv-cyan/[0.03] via-transparent to-pv-fuch/[0.03]" />
-              <textarea
-                rows={4}
-                placeholder="Will Bitcoin trade above $70,000 at the deadline?"
-                value={question}
-                onChange={(e) => setQuestion(e.target.value)}
-                className="min-h-[120px] w-full resize-none rounded-2xl border border-black/[0.12] bg-pv-bg/40 p-5 font-display text-lg leading-snug tracking-tight text-pv-text outline-none transition-all placeholder:text-pv-muted/30 focus:border-pv-emerald/50 focus:ring-1 focus:ring-pv-emerald/30 sm:text-xl"
-              />
-            </div>
+            {/* Challenge section */}
+            <AnimatedItem>
+              <GlassCard glass noPad glow="none" className="!rounded-2xl border border-black/[0.12] w-full">
+                <div className="space-y-6 p-6 sm:p-8">
+                  <div className="mb-2 flex items-center gap-3">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-pv-emerald/10 text-pv-emerald" aria-hidden>
+                      <FileEdit size={18} strokeWidth={2} />
+                    </span>
+                    <h2 id={challengeHeadingId} className="font-display text-base font-bold uppercase tracking-[0.16em] text-pv-text sm:text-lg sm:tracking-[0.18em]">
+                      {t("challengeSectionTitle")}
+                    </h2>
+                  </div>
 
-            {/* Side A / Side B */}
-            <div className="grid grid-cols-1 gap-5 md:grid-cols-2 md:gap-0">
-              <div className="relative flex flex-col gap-3 md:pr-4 md:border-r md:border-black/[0.06]">
-                <div className="flex items-center gap-2">
-                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-pv-cyan/10 text-pv-cyan" aria-hidden>
-                    <User size={14} strokeWidth={2} />
-                  </span>
-                  <span className="font-display text-[10px] font-bold uppercase tracking-[0.18em] text-pv-cyan">I BET</span>
-                </div>
-                <input
-                  type="text"
-                  placeholder="Yes — BTC will be above $70k"
-                  value={creatorPos}
-                  onChange={(e) => setCreatorPos(e.target.value)}
-                  className="w-full rounded-xl border border-pv-cyan/[0.15] bg-pv-bg/90 px-4 py-3 text-sm text-pv-text outline-none transition-all placeholder:text-pv-muted/55 focus:border-pv-cyan/40 focus:ring-1 focus:ring-pv-cyan/20"
-                />
-              </div>
-              <div className="relative flex flex-col gap-3 md:pl-4">
-                <div className="flex items-center gap-2">
-                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-pv-fuch/10 text-pv-fuch" aria-hidden>
-                    <Users size={14} strokeWidth={2} />
-                  </span>
-                  <span className="font-display text-[10px] font-bold uppercase tracking-[0.18em] text-pv-fuch">CHALLENGERS BET</span>
-                </div>
-                <input
-                  type="text"
-                  placeholder="No — BTC will not reach $70k"
-                  value={opponentPos}
-                  onChange={(e) => setOpponentPos(e.target.value)}
-                  className="w-full rounded-xl border border-pv-fuch/[0.15] bg-pv-bg/90 px-4 py-3 text-sm text-pv-text outline-none transition-all placeholder:text-pv-muted/55 focus:border-pv-fuch/40 focus:ring-1 focus:ring-pv-fuch/20"
-                />
-              </div>
-            </div>
-          </div>
+                  {/* Question textarea */}
+                  <div className="relative">
+                    <div className="absolute inset-0 rounded-2xl pointer-events-none bg-gradient-to-br from-pv-cyan/[0.03] via-transparent to-pv-fuch/[0.03]" />
+                    <textarea
+                      id={`create-q-${challengeFieldUid}`}
+                      rows={5}
+                      className="min-h-[160px] w-full resize-none rounded-2xl border border-black/[0.12] bg-pv-bg/40 p-6 sm:p-8 font-display text-xl leading-snug tracking-tight text-pv-text outline-none transition-all placeholder:text-pv-muted/30 focus:border-pv-emerald/50 focus:ring-1 focus:ring-pv-emerald/30 sm:text-2xl md:text-[26px]"
+                      placeholder="Will Bitcoin trade above $70,000 at the deadline?"
+                      aria-labelledby={challengeHeadingId}
+                      value={question}
+                      onChange={(e) => setQuestion(e.target.value)}
+                    />
+                  </div>
 
-          {/* Stake */}
-          <div className={sectionCls}>
-            <h2 className={sectionHeadingCls}>
-              <span className={sectionIconCls} aria-hidden><Coins size={16} strokeWidth={2} /></span>
-              Your Stake
-            </h2>
-            <div className="flex flex-wrap gap-2">
-              {STAKE_PRESETS.map((amount) => {
-                const active = !customStake.trim() && stake === amount;
-                return (
-                  <button
-                    key={amount}
-                    type="button"
-                    onClick={() => { setStake(amount); setCustomStake(""); }}
-                    aria-pressed={active}
-                    className={`${presetBaseCls} min-w-[5rem] ${active ? presetActiveCls : presetIdleCls}`}
-                  >
-                    {amount} USDC
-                  </button>
-                );
-              })}
-              <div className={`flex items-center rounded-lg border px-3 py-2.5 transition-[border-color,background-color,color] min-w-[6rem] ${customStake.trim() ? presetActiveCls : presetIdleCls}`}>
-                <input
-                  type="number"
-                  min={1}
-                  step={1}
-                  inputMode="numeric"
-                  placeholder="Custom"
-                  value={customStake}
-                  onChange={(e) => setCustomStake(e.target.value)}
-                  className="w-full bg-transparent font-display text-[11px] font-bold text-inherit outline-none placeholder:text-pv-muted/50 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                />
-                {customStake.trim() && <span className="ml-1 shrink-0 font-display text-[10px] font-bold text-inherit">USDC</span>}
-              </div>
-            </div>
-            <p className="text-[11px] text-pv-muted">Min 1 USDC · you stake on the YES side, challengers stake on NO</p>
-          </div>
-
-          {/* Deadline */}
-          <div className={sectionCls}>
-            <h2 className={sectionHeadingCls}>
-              <span className={sectionIconCls} aria-hidden><Clock size={16} strokeWidth={2} /></span>
-              Deadline
-            </h2>
-            <div className="flex flex-wrap gap-2">
-              {DEADLINE_PRESETS.map((p) => {
-                const active = deadlineMinutes === p.minutes;
-                return (
-                  <button
-                    key={p.minutes}
-                    type="button"
-                    onClick={() => setDeadlineMinutes(p.minutes)}
-                    aria-pressed={active}
-                    className={`${presetBaseCls} min-w-[5rem] ${active ? presetActiveCls : presetIdleCls}`}
-                  >
-                    {p.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Resolution source */}
-          <div className={sectionCls}>
-            <h2 className={sectionHeadingCls}>
-              <span className={sectionIconCls} aria-hidden><Link2 size={16} strokeWidth={2} /></span>
-              Resolution Source
-            </h2>
-            <input
-              type="url"
-              placeholder="https://flashapi.trade/prices/BTC  (leave blank for web search)"
-              value={resolutionUrl}
-              onChange={(e) => setResolutionUrl(e.target.value)}
-              spellCheck={false}
-              className="w-full rounded-xl border border-black/[0.12] bg-pv-bg/90 px-4 py-3 font-mono text-xs text-pv-text outline-none transition-all placeholder:text-pv-muted/40 focus:border-pv-emerald/50 focus:ring-1 focus:ring-pv-emerald/20"
-            />
-            <p className="text-[11px] leading-relaxed text-pv-muted">
-              The oracle fetches this URL at the deadline to verify the outcome. Leave blank to use web search.
-            </p>
-
-            {/* Category */}
-            <div className="pt-2">
-              <p className="mb-2 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-pv-muted">Category</p>
-              <div className="flex flex-wrap gap-2">
-                {CATEGORIES.map((c) => {
-                  const active = category === c;
-                  return (
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                    <p className={`min-w-0 flex-1 text-xs leading-relaxed ${questionNeedsWork ? "text-amber-300" : "text-pv-muted"}`}>
+                      {questionNeedsWork ? t("qualitySpecificity") : t("questionStrengthHint")}
+                    </p>
                     <button
-                      key={c}
                       type="button"
-                      onClick={() => setCategory(c)}
-                      aria-pressed={active}
-                      className={`${presetBaseCls} capitalize ${active ? presetActiveCls : presetIdleCls}`}
+                      onClick={() => {
+                        const d = draftOutcomeSides(question);
+                        if (d) { setCreatorPos(d.creator); setOpponentPos(d.opponent); }
+                      }}
+                      disabled={question.trim().length === 0}
+                      className="inline-flex shrink-0 items-center justify-center gap-1.5 self-start rounded-md border border-black/[0.1] bg-black/[0.04] px-2.5 py-1.5 text-left text-[11px] font-medium leading-snug text-pv-text/90 transition-colors hover:border-black/[0.16] hover:bg-black/[0.07] disabled:cursor-not-allowed disabled:opacity-40 sm:max-w-[min(100%,15rem)]"
+                      title={t("outcomeAutofillHint")}
                     >
-                      {c}
+                      <Wand2 className="size-3.5 shrink-0 text-pv-emerald/90" aria-hidden />
+                      <span>{t("outcomeAutofillAction")}</span>
                     </button>
-                  );
-                })}
-              </div>
-            </div>
+                  </div>
+
+                  {/* Side A / Side B */}
+                  <div className="grid grid-cols-1 gap-6 md:grid-cols-2 md:gap-0">
+                    <div className="relative flex flex-col gap-4 md:pr-4 md:border-r md:border-black/[0.06]">
+                      <div className="relative flex items-center gap-2.5">
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-pv-cyan/10 text-pv-cyan" aria-hidden>
+                          <User size={16} strokeWidth={2} />
+                        </span>
+                        <span className="font-display text-xs font-bold uppercase tracking-[0.18em] text-pv-cyan sm:tracking-[0.2em]">
+                          {t("ibet")}
+                        </span>
+                      </div>
+                      <input
+                        type="text"
+                        className="relative w-full rounded-xl border border-pv-cyan/[0.15] bg-pv-bg/90 px-4 py-3.5 font-body text-sm text-pv-text outline-none transition-all placeholder:text-pv-muted/55 focus:border-pv-cyan/40 focus:ring-1 focus:ring-pv-cyan/20"
+                        placeholder="Yes — BTC will be above $70k"
+                        value={creatorPos}
+                        onChange={(e) => setCreatorPos(e.target.value)}
+                        autoComplete="off"
+                        aria-label={t("ibet")}
+                      />
+                    </div>
+                    <div className="relative flex flex-col gap-4 md:pl-4">
+                      <div className="relative flex items-center gap-2.5">
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-pv-fuch/10 text-pv-fuch" aria-hidden>
+                          <Users size={16} strokeWidth={2} />
+                        </span>
+                        <span className="font-display text-xs font-bold uppercase tracking-[0.18em] text-pv-fuch sm:tracking-[0.2em]">
+                          {t("rivalBets")}
+                        </span>
+                      </div>
+                      <input
+                        type="text"
+                        className="relative w-full rounded-xl border border-pv-fuch/[0.15] bg-pv-bg/90 px-4 py-3.5 font-body text-sm text-pv-text outline-none transition-all placeholder:text-pv-muted/55 focus:border-pv-fuch/40 focus:ring-1 focus:ring-pv-fuch/20"
+                        placeholder="No — BTC will not reach $70k"
+                        value={opponentPos}
+                        onChange={(e) => setOpponentPos(e.target.value)}
+                        autoComplete="off"
+                        aria-label={t("rivalBets")}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </GlassCard>
+            </AnimatedItem>
+
+            {/* Stake section */}
+            <AnimatedItem>
+              <GlassCard glass noPad glow="none" className="!rounded-2xl border border-black/[0.12] w-full">
+                <div className="space-y-3 p-6 sm:p-8">
+                  <h3 className="flex items-center gap-2.5 font-display text-xs font-bold uppercase tracking-[0.18em] text-pv-text sm:tracking-[0.2em]">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-pv-emerald/10 text-pv-emerald" aria-hidden>
+                      <Coins size={16} strokeWidth={2} />
+                    </span>
+                    {t("stakeSectionTitle")}
+                  </h3>
+                  <div className="grid grid-cols-5 gap-2">
+                    {STAKE_PRESET_AMOUNTS.map((amount) => (
+                      <motion.button
+                        key={amount}
+                        type="button"
+                        whileTap={{ scale: 0.97 }}
+                        onClick={() => { setStake(amount); setCustomStakeDraft(""); }}
+                        aria-pressed={stake === amount && presetStakeHighlight}
+                        className={`min-w-0 rounded-lg border px-1.5 py-2 font-display text-[11px] font-bold leading-tight transition-[border-color,background-color,color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pv-emerald/35 focus-visible:ring-offset-2 focus-visible:ring-offset-pv-bg sm:px-2 sm:py-2.5 sm:text-xs ${
+                          stake === amount && presetStakeHighlight
+                            ? "border-pv-emerald bg-pv-emerald/[0.12] text-pv-emerald shadow-[0_0_16px_-8px_rgba(52,211,153,0.3)]"
+                            : "border border-black/[0.12] bg-pv-surface text-pv-muted hover:border-pv-emerald/35 hover:text-pv-emerald"
+                        }`}
+                      >
+                        {amount} USDC
+                      </motion.button>
+                    ))}
+                    <div className={`flex min-h-[2.75rem] w-full min-w-0 items-center justify-center rounded-lg border px-1.5 py-1.5 transition-[border-color,background-color,color,box-shadow] sm:min-h-[3.25rem] sm:px-2 sm:py-2 ${
+                      customStakeFocused || !isPresetStakeAmount(stake)
+                        ? "border-pv-emerald bg-pv-emerald/[0.12] text-pv-emerald shadow-[0_0_16px_-8px_rgba(52,211,153,0.3)]"
+                        : "border border-black/[0.12] bg-pv-surface text-pv-muted"
+                    }`}>
+                      <div className="inline-flex max-w-full items-center justify-center gap-0.5 sm:gap-1">
+                        <input
+                          type="number"
+                          min={MIN_STAKE}
+                          step={1}
+                          inputMode="numeric"
+                          aria-label={t("stakeCustomAmount")}
+                          className={`max-w-full shrink-0 bg-transparent font-display text-[11px] font-bold tabular-nums text-inherit outline-none placeholder:text-pv-muted/50 focus:outline-none sm:text-xs [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${customStakeDraft.trim() !== "" ? "text-right" : "text-center"}`}
+                          style={{ width: customStakeDraft.trim() ? `${Math.max(2, customStakeDraft.length + 0.5)}ch` : "min(100%, 11ch)" }}
+                          placeholder={t("stakeCustomPlaceholder")}
+                          value={customStakeDraft}
+                          onChange={(e) => setCustomStakeDraft(e.target.value)}
+                          onFocus={() => setCustomStakeFocused(true)}
+                          onBlur={() => {
+                            setCustomStakeFocused(false);
+                            const raw = customStakeDraft.trim();
+                            if (raw === "") { if (!isPresetStakeAmount(stake)) setStake(MIN_STAKE); return; }
+                            const n = Math.floor(Number(raw));
+                            if (!Number.isFinite(n) || n < MIN_STAKE) { if (isPresetStakeAmount(stake)) setCustomStakeDraft(""); else setCustomStakeDraft(String(stake)); return; }
+                            setStake(n);
+                          }}
+                        />
+                        {customStakeDraft.trim() !== "" && (
+                          <span className="shrink-0 font-display text-[10px] font-bold leading-none tracking-tight text-inherit sm:text-[11px]" aria-hidden>USDC</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </GlassCard>
+            </AnimatedItem>
+
+            {/* Deadline section */}
+            <AnimatedItem>
+              <GlassCard glass noPad glow="none" className="!rounded-2xl border border-black/[0.12] w-full" role="group" aria-label={t("deadline")}>
+                <div className="space-y-4 p-6 sm:p-8">
+                  <h3 className="flex items-center gap-2.5 font-display text-xs font-bold uppercase tracking-[0.18em] text-pv-text sm:tracking-[0.2em]">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-pv-emerald/10 text-pv-emerald" aria-hidden>
+                      <Clock size={16} strokeWidth={2} />
+                    </span>
+                    {t("deadline")}
+                  </h3>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+                    {DEADLINE_PRESET_IDS.map((id) => {
+                      const seconds = DEADLINE_PRESET_SECONDS[id];
+                      const selected = deadlinePreset === seconds;
+                      return (
+                        <motion.button
+                          key={id}
+                          type="button"
+                          whileTap={{ scale: 0.97 }}
+                          onClick={() => applyDeadlinePreset(seconds)}
+                          aria-pressed={selected}
+                          className={`min-w-0 rounded-lg border px-1.5 py-2 font-display text-[11px] font-bold leading-tight transition-[border-color,background-color,color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pv-emerald/35 focus-visible:ring-offset-2 focus-visible:ring-offset-pv-bg sm:px-2 sm:py-2.5 sm:text-xs ${
+                            selected
+                              ? "border-pv-emerald bg-pv-emerald/[0.12] text-pv-emerald shadow-[0_0_16px_-8px_rgba(52,211,153,0.3)]"
+                              : "border border-black/[0.12] bg-pv-surface text-pv-muted hover:border-pv-emerald/35 hover:text-pv-emerald"
+                          }`}
+                        >
+                          {t(`presets.${id}` as any)}
+                        </motion.button>
+                      );
+                    })}
+                  </div>
+                  <GlassCard className="p-4 sm:p-5">
+                    <p className="mb-3 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-pv-muted">{t("orChooseExactDate")}</p>
+                    <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_11rem]">
+                      <div className="space-y-1.5">
+                        <label className="block font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-pv-muted">{t("exactDate")} *</label>
+                        <input
+                          type="date"
+                          min={customDateInputMin}
+                          value={customDeadlineDate}
+                          onChange={(e) => { setDeadlinePreset(null); setCustomDeadlineDate(e.target.value); }}
+                          className="w-full rounded-xl border border-black/[0.12] bg-pv-bg/90 px-4 py-3 text-sm text-pv-text outline-none transition-all focus:border-pv-emerald/50 focus:ring-1 focus:ring-pv-emerald/20 [color-scheme:dark]"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="block font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-pv-muted">{t("exactTime")} *</label>
+                        <input
+                          type="time"
+                          value={customDeadlineTime}
+                          onChange={(e) => { setDeadlinePreset(null); setCustomDeadlineTime(e.target.value); }}
+                          disabled={!customDeadlineDate}
+                          className="w-full rounded-xl border border-black/[0.12] bg-pv-bg/90 px-4 py-3 text-sm text-pv-text outline-none transition-all focus:border-pv-emerald/50 focus:ring-1 focus:ring-pv-emerald/20 disabled:cursor-not-allowed disabled:opacity-50 [color-scheme:dark]"
+                        />
+                      </div>
+                    </div>
+                  </GlassCard>
+                </div>
+              </GlassCard>
+            </AnimatedItem>
+
+            {/* Resolution source section */}
+            <AnimatedItem>
+              <GlassCard glass noPad glow="none" className="!rounded-2xl border border-black/[0.12] w-full" role="group" aria-label={t("verificationSourceSectionTitle")}>
+                <div className="space-y-4 p-6 sm:p-8">
+                  <h3 className="flex items-center gap-2.5 font-display text-xs font-bold uppercase tracking-[0.18em] text-pv-text sm:tracking-[0.2em]">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-pv-emerald/10 text-pv-emerald" aria-hidden>
+                      <Link2 size={16} strokeWidth={2} />
+                    </span>
+                    {t("verificationSourceSectionTitle")}
+                  </h3>
+                  <input
+                    type="text"
+                    autoComplete="off"
+                    spellCheck={false}
+                    placeholder={t("verificationUrlPlaceholder")}
+                    value={url}
+                    onChange={(e) => setUrl(e.target.value)}
+                    className="w-full rounded-xl border border-black/[0.12] bg-pv-bg/90 px-4 py-3 font-mono text-xs text-pv-text outline-none transition-all placeholder:text-pv-muted/40 focus:border-pv-emerald/50 focus:ring-1 focus:ring-pv-emerald/20"
+                  />
+                  <p className={`text-xs leading-relaxed ${sourceNeedsWork ? "text-amber-300" : "text-pv-muted"}`}>
+                    {sourceNeedsWork ? t("qualitySource") : t("sourceStrengthHint")}
+                  </p>
+                  <div className="space-y-3 rounded-xl border border-black/[0.08] bg-pv-bg/70 p-4 sm:p-5">
+                    <h4 className="text-[11px] font-bold uppercase tracking-[0.16em] text-pv-emerald/85">{t("verificationGuidanceTitle")}</h4>
+                    <p className="text-sm leading-relaxed text-pv-muted">{categoryGuidance.sourceHint}</p>
+                    <div className="flex flex-wrap gap-2">
+                      {categoryGuidance.sourceExamples.map((example) => (
+                        <button
+                          key={example}
+                          type="button"
+                          onClick={() => setUrl(`https://${example}`)}
+                          className="rounded-full border border-black/[0.08] bg-black/[0.03] px-3 py-1.5 font-mono text-[10px] font-medium text-pv-muted/70 transition-colors hover:border-black/[0.14] hover:text-pv-muted"
+                        >
+                          {example}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </GlassCard>
+            </AnimatedItem>
+
+            {/* Advanced section (collapsible) */}
+            <AnimatedItem>
+              <GlassCard glass noPad glow="none" className="!rounded-2xl border border-black/[0.12] w-full overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setAdvancedOpen((v) => !v)}
+                  aria-expanded={advancedOpen}
+                  aria-controls={termsPanelId}
+                  className="flex w-full items-center justify-between gap-4 px-6 py-5 text-left transition-colors hover:bg-black/[0.02] sm:px-8 sm:py-6"
+                >
+                  <div className="flex min-w-0 gap-3">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-pv-emerald/10 text-pv-emerald" aria-hidden>
+                      <SlidersHorizontal size={16} strokeWidth={2} />
+                    </span>
+                    <div className="min-w-0 space-y-1">
+                      <h3 className="font-display text-xs font-bold uppercase tracking-[0.18em] text-pv-text sm:tracking-[0.2em]">{t("advancedToggle")}</h3>
+                      <p className="text-[10px] leading-relaxed text-pv-muted sm:text-[11px]">{t("advancedHint")}</p>
+                    </div>
+                  </div>
+                  <ChevronDown size={20} className={`shrink-0 text-pv-muted transition-transform duration-200 ease-out ${advancedOpen ? "rotate-180" : ""}`} aria-hidden />
+                </button>
+                <motion.div
+                  initial={false}
+                  animate={{ height: advancedOpen ? "auto" : 0, opacity: advancedOpen ? 1 : 0 }}
+                  transition={{ height: { duration: 0.34, ease: [0.25, 0.46, 0.45, 0.94] }, opacity: { duration: 0.22, ease: [0.25, 0.1, 0.25, 1] } }}
+                  className={`overflow-hidden ${!advancedOpen ? "pointer-events-none" : ""}`}
+                  aria-hidden={!advancedOpen}
+                >
+                  <div id={termsPanelId} className="space-y-8 border-t border-black/[0.08] px-6 pb-6 pt-6 sm:px-8 sm:pb-8">
+                    {/* Category */}
+                    <div className="space-y-3">
+                      <label className="block text-[10px] font-bold uppercase tracking-[0.16em] text-pv-muted">{t("category")}</label>
+                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                        {CATEGORIES.map((cat) => {
+                          const selected = category === cat.id;
+                          return (
+                            <button
+                              key={cat.id}
+                              type="button"
+                              onClick={() => setCategory(normalizeCategoryId(cat.id))}
+                              aria-pressed={selected}
+                              className={`rounded-lg border px-3 py-2.5 text-left font-display text-[11px] font-bold capitalize transition-[border-color,background-color,color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pv-emerald/35 sm:text-xs ${
+                                selected
+                                  ? "border-pv-emerald bg-pv-emerald/[0.12] text-pv-emerald shadow-[0_0_16px_-8px_rgba(52,211,153,0.3)]"
+                                  : "border border-black/[0.12] bg-pv-surface text-pv-muted hover:border-pv-emerald/35 hover:text-pv-emerald"
+                              }`}
+                            >
+                              {cat.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Settlement rule */}
+                    <div className="space-y-3">
+                      <label htmlFor="settlement-rule" className="block text-[10px] font-bold uppercase tracking-[0.16em] text-pv-muted">
+                        {t("settlementRule")}
+                      </label>
+                      <textarea
+                        id="settlement-rule"
+                        rows={4}
+                        className="w-full resize-none rounded-xl border border-black/[0.12] bg-pv-bg/90 px-4 py-3 text-sm text-pv-text outline-none transition-all placeholder:text-pv-muted/40 focus:border-pv-emerald/50 focus:ring-1 focus:ring-pv-emerald/20"
+                        placeholder={t("settlementPlaceholder")}
+                        value={settlementRule}
+                        onChange={(e) => setSettlementRule(e.target.value)}
+                      />
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                        <p className="min-w-0 flex-1 text-left text-[11px] leading-relaxed text-pv-muted">{t("settlementRuleHint")}</p>
+                        <button
+                          type="button"
+                          onClick={() => setSettlementRule(recommendedSettlementTemplate)}
+                          className="inline-flex shrink-0 items-center justify-center gap-1.5 self-start rounded-md border border-black/[0.1] bg-black/[0.04] px-2.5 py-1.5 text-[11px] font-medium text-pv-text/90 transition-colors hover:border-black/[0.16] hover:bg-black/[0.07] sm:self-auto"
+                        >
+                          <Wand2 className="size-3.5 shrink-0 text-pv-emerald/90" aria-hidden />
+                          <span>{t("useRecommendedRule")}</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+              </GlassCard>
+            </AnimatedItem>
+
           </div>
 
-          {/* Error */}
-          {error && (
-            <div className="rounded-xl border border-red-400/30 bg-red-500/[0.08] px-4 py-3 text-sm text-red-400">
-              {error}
-            </div>
-          )}
+          {/* ── Right sidebar ── */}
+          <aside className="lg:col-span-4 text-pv-text">
+            <AnimatedItem>
+              <div className="flex flex-col gap-6 lg:sticky lg:top-24">
+                <CreateChallengeTicket
+                  draftId={ticketDraftId}
+                  marketTypeLabel={t("marketTypes.binary" as any)}
+                  oddsModeLabel={t("oddsModes.pool" as any)}
+                  formatLabel={t("headToHeadSummary")}
+                  visibilityLabel={t("visibilityPublic")}
+                  settlementPreview={ticketSettlementPreview}
+                  stakeAmount={stake}
+                  walletAddress={walletAddress}
+                />
 
-          {/* Submit */}
-          <button
-            type="button"
-            disabled={!!busy}
-            onClick={() => void onSubmit()}
-            className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl border border-pv-emerald/40 bg-pv-emerald/[0.12] font-display text-sm font-bold uppercase tracking-[0.18em] text-pv-emerald transition-colors hover:border-pv-emerald/60 hover:bg-pv-emerald/[0.2] disabled:cursor-wait disabled:opacity-60"
-          >
-            {busy ?? (
-              <>
-                <span>PUBLISH · {effectiveStake} USDC</span>
-                <Zap size={16} aria-hidden />
-              </>
-            )}
-          </button>
+                {error && (
+                  <div className="rounded-xl border border-red-400/30 bg-red-500/[0.08] px-4 py-3 text-sm text-red-400">
+                    {error}
+                  </div>
+                )}
 
-          <p className="text-center text-[11px] text-pv-muted">
-            Two transactions: create on Solana devnet, then delegate to MagicBlock ER.
-            Need test USDC?{" "}
-            <a
-              href="https://faucet.circle.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-pv-cyan underline underline-offset-2"
-            >
-              faucet.circle.com
-            </a>{" "}
-            → USDC · Solana Devnet.
-          </p>
+                <Button
+                  variant="primary"
+                  onClick={() => void onSubmit()}
+                  loading={!!busy}
+                  disabled={!!busy}
+                  className="rounded-2xl py-5 font-display text-sm font-bold uppercase tracking-widest"
+                >
+                  {busy ?? (
+                    <>
+                      <span>{t("createAndFund", { amount: stake })}</span>
+                      <Zap className="size-5 shrink-0" aria-hidden />
+                    </>
+                  )}
+                </Button>
+
+                <p className="text-center text-[9px] font-bold uppercase tracking-widest text-pv-muted/55 leading-snug">
+                  {t("ticketSignatureNote")}
+                </p>
+
+                <p className="text-center text-[11px] text-pv-muted">
+                  Need test USDC?{" "}
+                  <a href="https://faucet.circle.com" target="_blank" rel="noopener noreferrer" className="text-pv-cyan underline underline-offset-2">
+                    faucet.circle.com
+                  </a>{" "}
+                  → USDC · Solana Devnet.
+                </p>
+              </div>
+            </AnimatedItem>
+          </aside>
         </div>
       )}
-    </div>
+    </PageTransition>
   );
 }
