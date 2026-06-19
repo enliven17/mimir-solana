@@ -759,7 +759,7 @@ export default function ArenaClaimPage() {
 
             {/* Council verdict — full-width in the main column */}
             <div className="mt-6 sm:mt-8">
-              <CouncilVotes claimId={claim.id} />
+              <CouncilVotes claimId={claim.id} claimState={claim.state} winnerSide={claim.winnerSide} />
             </div>
           </div>
 

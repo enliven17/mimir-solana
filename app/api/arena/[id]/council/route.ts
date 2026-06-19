@@ -52,6 +52,7 @@ export async function GET(
         address: p.address,
         staked: Boolean(ch),
         stakeUsdc: ch ? Number(ch.stake) / 1e6 : 0,
+        paid: ch?.paid ?? false,
       };
     });
 

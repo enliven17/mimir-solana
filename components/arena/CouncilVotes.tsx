@@ -1,10 +1,8 @@
 "use client";
 
 /**
- * CouncilVotes — arena claim-detail panel showing where each of the AI council
- * personas stands on a single claim. A 1:1 port of the original Mimir
- * CouncilVoteWidget: reads /api/arena/[id]/council and renders a grid of
- * persona pills with ✓ + stake (challenger side) or — abstain.
+ * CouncilVotes — shows where each AI council persona stands on a claim.
+ * For resolved claims also shows won/lost/refunded outcome per persona.
  */
 import { useEffect, useState } from "react";
 
@@ -16,6 +14,7 @@ interface PersonaVote {
   address: string;
   staked: boolean;
   stakeUsdc: number;
+  paid: boolean;
 }
 
 interface CouncilResponse {
@@ -26,11 +25,28 @@ interface CouncilResponse {
   votes: PersonaVote[];
 }
 
+// winnerSide: 1=creator, 2=challengers, 3=draw/refund, 4=unresolvable/refund
+function outcomeTag(v: PersonaVote, winnerSide: number): { label: string; cls: string } | null {
+  if (!v.staked) return null;
+  if (winnerSide === 2) return { label: v.paid ? "WON · PAID" : "WON", cls: "text-pv-emerald border-pv-emerald/40 bg-pv-emerald/[0.08]" };
+  if (winnerSide === 1) return { label: "LOST", cls: "text-red-400 border-red-400/30 bg-red-500/[0.06]" };
+  if (winnerSide === 3 || winnerSide === 4) return { label: v.paid ? "REFUNDED" : "REFUNDING", cls: "text-pv-gold border-pv-gold/40 bg-pv-gold/[0.08]" };
+  return null;
+}
+
 function explorerAddr(addr: string): string {
   return `https://explorer.solana.com/address/${addr}?cluster=devnet`;
 }
 
-export default function CouncilVotes({ claimId }: { claimId: number }) {
+interface Props {
+  claimId: number;
+  /** claim.state: 0=open,1=active,2=resolved,3=cancelled */
+  claimState?: number;
+  /** claim.winnerSide: 0=none,1=creator,2=challengers,3=draw,4=unresolvable */
+  winnerSide?: number;
+}
+
+export default function CouncilVotes({ claimId, claimState, winnerSide = 0 }: Props) {
   const [data, setData] = useState<CouncilResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -44,36 +60,25 @@ export default function CouncilVotes({ claimId }: { claimId: number }) {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json() as Promise<CouncilResponse>;
       })
-      .then((body) => {
-        if (cancelled) return;
-        setData(body);
-      })
-      .catch((err: Error) => {
-        if (cancelled) return;
-        setError(err.message);
-      })
-      .finally(() => {
-        if (cancelled) return;
-        setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
+      .then((body) => { if (!cancelled) setData(body); })
+      .catch((err: Error) => { if (!cancelled) setError(err.message); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [claimId]);
 
   if (loading) {
     return (
       <section className="rounded-2xl border border-pv-border/30 bg-pv-surface/70 p-5">
-        <div className="text-[11px] font-mono uppercase tracking-[0.18em] text-pv-muted">
-          Council verdict
-        </div>
+        <div className="text-[11px] font-mono uppercase tracking-[0.18em] text-pv-muted">Council verdict</div>
         <div className="mt-2 text-sm text-pv-muted">Reading on-chain stakes…</div>
       </section>
     );
   }
 
-  if (error || !data) return null; // fail-quiet — the page still works without it
-  if (data.total === 0) return null; // no council in this deploy
+  if (error || !data) return null;
+  if (data.total === 0) return null;
+
+  const isResolved = claimState === 2;
 
   return (
     <section className="rounded-2xl border border-pv-border/30 bg-pv-surface/70 p-5">
@@ -83,8 +88,9 @@ export default function CouncilVotes({ claimId }: { claimId: number }) {
             Council verdict
           </div>
           <p className="mt-0.5 text-[12px] text-pv-muted">
-            Where each of the {data.total} AI personas stands on this claim. ✓ means they
-            staked the challenger side.
+            {isResolved
+              ? `Where each of the ${data.total} AI personas bet — and what it cost them.`
+              : `Where each of the ${data.total} AI personas stands. ✓ means they staked the challenger side.`}
           </p>
         </div>
         <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-pv-muted">
@@ -93,46 +99,58 @@ export default function CouncilVotes({ claimId }: { claimId: number }) {
       </div>
 
       <ul className="grid gap-1.5 sm:grid-cols-2">
-        {data.votes.map((v) => (
-          <li
-            key={v.slug}
-            className={`flex items-center justify-between gap-2 rounded-lg border px-2.5 py-1.5 ${
-              v.staked
-                ? "border-pv-emerald/35 bg-pv-emerald/[0.05]"
-                : "border-pv-border/30 bg-pv-surface2/20"
-            }`}
-          >
-            <div className="flex min-w-0 items-center gap-2">
-              <span className="text-base leading-none grayscale opacity-75">{v.emoji}</span>
-              <span
-                className={`truncate text-[12px] font-semibold ${
-                  v.staked ? "text-pv-text" : "text-pv-muted"
-                }`}
-              >
-                {v.displayName}
-              </span>
-            </div>
-            {v.staked ? (
-              <div className="flex shrink-0 items-center gap-1.5">
-                <span className="font-mono text-[10px] tabular-nums text-pv-emerald">
-                  ✓ {v.stakeUsdc.toFixed(2)} USDC
+        {data.votes.map((v) => {
+          const outcome = isResolved ? outcomeTag(v, winnerSide) : null;
+          return (
+            <li
+              key={v.slug}
+              className={`flex items-center justify-between gap-2 rounded-lg border px-2.5 py-1.5 ${
+                v.staked
+                  ? outcome?.cls
+                    ? `border-current/20 bg-current/5 ${outcome.cls}`
+                    : "border-pv-emerald/35 bg-pv-emerald/[0.05]"
+                  : "border-pv-border/30 bg-pv-surface2/20"
+              }`}
+            >
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="text-base leading-none grayscale opacity-75">{v.emoji}</span>
+                <span className={`truncate text-[12px] font-semibold ${v.staked ? "text-pv-text" : "text-pv-muted"}`}>
+                  {v.displayName}
                 </span>
-                <a
-                  href={explorerAddr(v.address)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="font-mono text-[10px] text-pv-muted hover:text-pv-emerald"
-                >
-                  ↗
-                </a>
               </div>
-            ) : (
-              <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-pv-muted">
-                — abstain
-              </span>
-            )}
-          </li>
-        ))}
+              {v.staked ? (
+                <div className="flex shrink-0 items-center gap-1.5">
+                  {outcome ? (
+                    <span className={`rounded border px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-[0.12em] ${outcome.cls}`}>
+                      {outcome.label}
+                    </span>
+                  ) : (
+                    <span className="font-mono text-[10px] tabular-nums text-pv-emerald">
+                      ✓ {v.stakeUsdc.toFixed(2)} USDC
+                    </span>
+                  )}
+                  {!outcome && (
+                    <a
+                      href={explorerAddr(v.address)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-mono text-[10px] text-pv-muted hover:text-pv-emerald"
+                    >
+                      ↗
+                    </a>
+                  )}
+                  {outcome && (
+                    <span className="font-mono text-[10px] tabular-nums text-pv-muted">
+                      {v.stakeUsdc.toFixed(2)} USDC
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-pv-muted">— abstain</span>
+              )}
+            </li>
+          );
+        })}
       </ul>
     </section>
   );
