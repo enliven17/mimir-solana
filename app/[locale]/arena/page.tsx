@@ -15,7 +15,8 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useParams } from "next/navigation";
-import { ChevronDown, ListFilter, RefreshCw, Search, X } from "lucide-react";
+import { ChevronDown, ListFilter, Plus, RefreshCw, Search, X } from "lucide-react";
+import { Link } from "@/i18n/navigation";
 
 import PageTransition, { AnimatedItem } from "@/components/PageTransition";
 import { ArenaCardSkeleton } from "@/components/ui";
@@ -170,23 +171,22 @@ export default function ArenaPage() {
     [cat, minStake, search, sort]
   );
 
-  const openChallenges = useMemo(
-    () => applyShared((claims ?? []).filter((c) => isOpenState(c.state))),
-    [applyShared, claims]
-  );
+  const openChallenges = useMemo(() => {
+    const now = Math.floor(Date.now() / 1000);
+    return applyShared((claims ?? []).filter((c) => isOpenState(c.state) && c.deadline > now));
+  }, [applyShared, claims]);
 
   const resolvedChallenges = useMemo(
     () => applyShared((claims ?? []).filter((c) => isResolvedState(c.state))),
     [applyShared, claims]
   );
 
-  const liveChallenges = useMemo(
-    () =>
-      applyShared(
-        (claims ?? []).filter((c) => c.delegated && isOpenState(c.state))
-      ),
-    [applyShared, claims]
-  );
+  const liveChallenges = useMemo(() => {
+    const now = Math.floor(Date.now() / 1000);
+    return applyShared(
+      (claims ?? []).filter((c) => c.delegated && isOpenState(c.state) && c.deadline > now)
+    );
+  }, [applyShared, claims]);
 
   const hasActiveFilters =
     cat !== "all" || minStake !== 0 || search.trim().length > 0;
@@ -365,9 +365,9 @@ export default function ArenaPage() {
         <ExploreArenaEmptyState
           eyebrow="Empty arena"
           title="No open challenges right now"
-          description="The market-creator agent opens new claims from live Flash Trade prices. Check back shortly."
-          ctaLabel="HOW IT WORKS"
-          ctaHref={`/${locale}/docs`}
+          description="The market-creator agent opens new claims periodically. You can also publish your own challenge."
+          ctaLabel="PUBLISH CHALLENGE"
+          ctaHref={`/${locale}/arena/create`}
         />
       );
     }
@@ -682,6 +682,13 @@ export default function ArenaPage() {
                     />
                     {refreshing ? "Refreshing" : "Refresh"}
                   </button>
+                  <Link
+                    href={`/${locale}/arena/create`}
+                    className="flex h-11 min-h-[44px] w-full shrink-0 items-center justify-center gap-2 rounded border border-pv-emerald/30 bg-pv-emerald/[0.08] px-5 font-display text-[11px] font-bold uppercase tracking-[0.18em] text-pv-emerald transition-colors hover:border-pv-emerald/50 hover:bg-pv-emerald/[0.14] lg:w-auto"
+                  >
+                    <Plus size={16} aria-hidden />
+                    PUBLISH
+                  </Link>
                 </div>
               </div>
 

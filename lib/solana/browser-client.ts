@@ -17,7 +17,19 @@ import {
   USDC_MINT,
   balancePda,
   claimPda,
+  configPda,
 } from "./config";
+
+export interface CreateClaimInput {
+  question: string;
+  creatorPosition: string;
+  counterPosition: string;
+  resolutionUrl: string;
+  category: string;
+  stakeAmount: bigint;
+  deadline: number;
+  maxChallengers?: number;
+}
 import idl from "./idl/mimir.json";
 
 export interface BrowserMimir {
@@ -90,6 +102,47 @@ export async function challengeInER(
       balance: balancePda(m.owner),
     })
     .rpc({ skipPreflight: true });
+}
+
+/** Create a new claim (base layer). Returns the new claim ID. */
+export async function createClaim(
+  m: BrowserMimir,
+  input: CreateClaimInput
+): Promise<{ claimId: bigint }> {
+  const cfg: any = await (m.base.account as any).config.fetch(configPda());
+  const nextId = BigInt(cfg.claimCount.toString()) + 1n;
+  await m.base.methods
+    .createClaim({
+      question: input.question,
+      creatorPosition: input.creatorPosition,
+      counterPosition: input.counterPosition,
+      resolutionUrl: input.resolutionUrl,
+      category: input.category,
+      stakeAmount: new BN(input.stakeAmount.toString()),
+      deadline: new BN(input.deadline),
+      maxChallengers: input.maxChallengers ?? 16,
+    })
+    .accounts({
+      creator: m.owner,
+      claim: claimPda(nextId),
+      creatorToken: getAssociatedTokenAddressSync(USDC_MINT, m.owner, true),
+    })
+    .rpc();
+  return { claimId: nextId };
+}
+
+/** Delegate a claim PDA to the MagicBlock ER. */
+export async function delegateClaim(
+  m: BrowserMimir,
+  claimId: bigint
+): Promise<string> {
+  return m.base.methods
+    .delegateClaim(new BN(claimId.toString()))
+    .accounts({ payer: m.owner, claim: claimPda(claimId) })
+    .remainingAccounts([
+      { pubkey: ER_VALIDATOR, isSigner: false, isWritable: false },
+    ])
+    .rpc();
 }
 
 /** Virtual balance lookup (tries ER first, then base). */
